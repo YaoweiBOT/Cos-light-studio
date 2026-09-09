@@ -1,0 +1,1 @@
+import("./app-GSIZTWXJ.js").catch(e=>{document.getElementById("loading-overlay").hidden=!0,document.getElementById("error-overlay").hidden=!1,document.getElementById("error-detail").textContent="\u754C\u9762\u672A\u80FD\u52A0\u8F7D\uFF1A"+e.message,document.getElementById("retry-button").onclick=()=>location.reload()});

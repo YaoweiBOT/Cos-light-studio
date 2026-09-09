@@ -1,0 +1,27 @@
+{
+  "source": "Three.js r170 examples",
+  "creator": "Lee Perry-Smith / Infinite Realities",
+  "license": "CC-BY-3.0",
+  "files": {
+    "LeePerrySmith_License.txt": {
+      "url": "https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/gltf/LeePerrySmith/LeePerrySmith_License.txt",
+      "bytes": 364,
+      "sha256": "7cf4da43a6ae6d32f7f7d063fe129a19468af6f4fe7c53b937f83959709fcb50"
+    },
+    "LeePerrySmith.glb": {
+      "url": "https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/gltf/LeePerrySmith/LeePerrySmith.glb",
+      "bytes": 404976,
+      "sha256": "402b8a8ac9f03232e6d64b5962929703a069daf99d3c49ac8eb0e48bedc9c576"
+    },
+    "Map-COL.jpg": {
+      "url": "https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/gltf/LeePerrySmith/Map-COL.jpg",
+      "bytes": 148269,
+      "sha256": "e976d73b31407f8d0967412bf468019ed26a5d5a32cf5811aabff7e816458a65"
+    },
+    "Infinite-Level_02_Tangent_SmoothUV.jpg": {
+      "url": "https://raw.githubusercontent.com/mrdoob/three.js/r170/examples/models/gltf/LeePerrySmith/Infinite-Level_02_Tangent_SmoothUV.jpg",
+      "bytes": 146793,
+      "sha256": "36925e51ad9b324b94e8faf4692da1b4132809f2762bb8d5bd549ffd215d4ca6"
+    }
+  }
+}
