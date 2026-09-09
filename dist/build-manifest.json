@@ -1,15 +1,15 @@
 {
   "application": "cos-light-studio",
   "version": "0.3.0",
-  "sourceDigest": "e37ddd90b9764ee9a9cdd8020ad6337fda8a9b8245101ef0cf7b8a8dde413866",
+  "sourceDigest": "c9ee83be1b9de37ccaccdcff3251e2bc66148fa568631414bc790a7f3fa8fc91",
   "bundled": true,
   "externalImports": 0,
   "hasScannedHead": true,
   "outputs": [
     "dist/assets/boot.js",
-    "dist/assets/renderer-W7X2X5RP.js.LEGAL.txt",
-    "dist/assets/renderer-W7X2X5RP.js",
-    "dist/assets/app-GSIZTWXJ.js",
-    "dist/assets/chunk-777U3KYY.js"
+    "dist/assets/renderer-IUSY6GLP.js.LEGAL.txt",
+    "dist/assets/renderer-IUSY6GLP.js",
+    "dist/assets/app-EICZPBMB.js",
+    "dist/assets/chunk-FWYJHCQF.js"
   ]
 }
