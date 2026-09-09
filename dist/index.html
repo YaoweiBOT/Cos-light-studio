@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' blob: data:; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'">
+  <meta name="theme-color" content="#121416">
+  <meta name="description" content="为人像摄影设计的黑棚布光练习室。调整灯位、柔光箱、色温和光比，观察三维扫描人脸上的真实几何阴影。">
+  <title>黑棚 · Cos Light Studio</title>
+  <link rel="icon" href="./assets/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="./assets/style.css">
+  <script type="module" src="./assets/boot.js"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="./" aria-label="黑棚首页"><span class="brand-mark" aria-hidden="true"><i></i></span><span>黑棚<span class="brand-en">COS LIGHT STUDIO</span></span></a>
+  <div class="project-title"><span class="live-dot"></span><input id="study-name" aria-label="方案名称" value="45° 面光练习" maxlength="80"><span class="saved-indicator" id="autosave-status">保存在此浏览器</span></div>
+  <nav class="header-actions" aria-label="文件与帮助">
+    <button id="help-button" class="quiet"><span data-icon="book"></span><span class="desktop-label">练习指南</span></button>
+    <button id="save-study" class="quiet"><span data-icon="bookmark"></span><span>保存方案</span></button>
+    <button id="export-button" class="primary"><span data-icon="download"></span><span>导出</span></button>
+  </nav>
+</header>
+
+<main class="workspace">
+  <aside class="left-panel" aria-label="布光方案与空间">
+    <div class="panel-heading"><span class="eyebrow">LIGHTING STUDIES</span><span class="small-badge">LOCAL 0.3</span></div>
+    <h1>让光的位置，<br>变得可见。</h1>
+    <p class="intro">从一盏灯开始，观察人脸的每一处明暗。</p>
+    <div class="section-label"><span>布光起点</span><span class="muted">9 组</span></div>
+    <div id="preset-list" class="preset-list" role="group" aria-label="布光预设"></div>
+    <section class="plan-section" aria-label="俯视灯位图">
+      <div class="section-label"><span>灯位 · 俯视</span><span class="muted">拖动灯具</span></div>
+      <canvas id="plan-canvas" width="560" height="520" aria-label="俯视灯位图，可拖动灯具；精确数值也可在右侧输入"></canvas>
+      <div class="plan-legend"><span><i class="gold"></i>当前灯</span><span><i class="gray"></i>相机</span><span>每圈 1 m</span></div>
+    </section>
+    <section class="saved-section"><div class="section-label"><span>我的练习</span><button id="import-button" class="text-button">导入方案</button></div><div id="saved-list"><p class="empty-note">保存一个灯位，下次接着练。</p></div></section>
+    <footer class="sidebar-foot">以米为单位 · 固定曝光 · 无默认环境光</footer>
+  </aside>
+
+  <section class="center-panel" aria-label="摄影机画面">
+    <div class="viewport-toolbar">
+      <div class="view-label"><span data-icon="camera"></span><span>摄影机</span><span class="subtle-divider"></span><span id="lens-label">A7C II · 56 mm</span></div>
+      <div class="toolbar-actions"><button id="compare-button" class="quiet small" title="保存当前画面用于 A/B 对比"><span data-icon="compare"></span>A/B</button><button id="grid-button" class="icon-button" aria-label="切换三分网格" aria-pressed="false"><span data-icon="grid"></span></button><button id="fullscreen-button" class="icon-button" aria-label="放大摄影机画面"><span data-icon="expand"></span></button></div>
+    </div>
+    <div class="viewport" id="viewport">
+      <div class="render-frame" id="render-frame">
+        <div id="render-container"></div>
+        <div class="thirds-grid" id="thirds-grid" hidden aria-hidden="true"></div>
+        <div class="compare-layer" id="compare-layer" hidden><img id="compare-image" alt="之前保存的 A 画面"><span class="compare-a">A · 已保存</span></div>
+        <div class="compare-divider" id="compare-divider" hidden><span>↔</span></div>
+        <span class="frame-corner tl"></span><span class="frame-corner tr"></span><span class="frame-corner bl"></span><span class="frame-corner br"></span>
+      </div>
+      <div class="frame-top"><span class="stage-label" id="subject-label">LEE PERRY SMITH / 扫描人像</span><span class="render-badge" id="render-badge"><i></i>准备中</span></div>
+      <div class="loading-overlay" id="loading-overlay" role="status" aria-live="polite">
+        <div class="loading-aperture"><i></i></div><h2 id="loading-title">正在打开黑棚</h2><p id="loading-detail">加载渲染器，然后让第一束光落下来。</p><div class="loading-line"><span></span></div>
+        <p class="loading-foot">本地渲染 · 素材和渲染库均来自本机</p>
+      </div>
+      <div class="error-overlay" id="error-overlay" hidden role="alert"><span data-icon="alert"></span><h2>渲染尚未启动</h2><p id="error-detail"></p><div><button id="retry-button" class="primary">重新加载</button><button id="cdn-button" class="quiet">复制诊断信息</button></div><p class="muted">灯位和方案仍可编辑、保存与导出。</p></div>
+      <div class="frame-bottom"><span id="render-resolution">—</span><span id="render-stats">等待首帧</span><button id="pause-button" class="quiet small" aria-label="暂停采样"><span data-icon="pause"></span>暂停</button></div>
+      <div id="falsecolor-legend" class="falsecolor-legend" hidden><span>线性亮度</span><i></i><span>暗部 → 18% → ≥ 1</span></div>
+    </div>
+    <div class="capture-strip">
+      <div><span class="capture-caption">FOCAL LENGTH</span><strong id="strip-focal">56 <small>mm</small></strong></div>
+      <div><span class="capture-caption">APERTURE</span><strong id="strip-aperture">ƒ/4</strong></div>
+      <div><span class="capture-caption">SHUTTER</span><strong id="strip-shutter">1/125</strong></div>
+      <div><span class="capture-caption">ISO</span><strong id="strip-iso">100</strong></div>
+      <div><span class="capture-caption">WHITE BALANCE</span><strong id="strip-wb">5600 <small>K</small></strong></div>
+      <div class="quality-control"><label for="quality-select">画质</label><select id="quality-select"><option value="draft">快速练习</option><option value="balanced" selected>均衡</option><option value="fine">精细</option></select></div>
+    </div>
+    <div class="study-note"><span class="note-number" id="note-number">01</span><div><h2 id="note-title">观察鼻影与颊影</h2><p id="note-text">45° 是起点。灯的高度、脸朝向与柔光箱尺寸，一起决定最后的光型。</p></div><button id="reset-button" class="quiet small" title="重置到当前布光预设"><span data-icon="reset"></span></button></div>
+    <div class="lower-tools"><button id="snapshot-button" class="text-button"><span data-icon="plus"></span>记住这张 · 设为 A</button><span id="compare-summary" class="muted">同曝光比较，才看得清光的变化。</span><button id="hide-compare" class="text-button" hidden>收起对比</button></div>
+  </section>
+
+  <aside class="right-panel" aria-label="灯光与摄影控制">
+    <div class="control-tabs" role="tablist"><button class="active" id="tab-light" role="tab" aria-selected="true" aria-controls="panel-light" data-tab="light">灯光</button><button id="tab-camera" role="tab" aria-selected="false" aria-controls="panel-camera" data-tab="camera">相机</button><button id="tab-scene" role="tab" aria-selected="false" aria-controls="panel-scene" data-tab="scene">场景</button></div>
+    <div class="tab-panel" id="panel-light" role="tabpanel" aria-labelledby="tab-light">
+      <div id="light-list" class="light-list"></div>
+      <div class="light-detail-heading"><div><span class="eyebrow">SELECTED LIGHT</span><h2 id="selected-light-name">主光</h2></div><button id="solo-button" class="pill-button" aria-pressed="false">单独看</button></div>
+      <div id="light-controls"></div>
+      <div class="meter-card"><div><span>面部中心 · 直射估计</span><strong id="meter-value">—</strong></div><p id="meter-detail">平面测光，未计入遮挡与反弹</p><div class="meter-line"><span id="meter-bar"></span></div></div>
+    </div>
+    <div class="tab-panel" id="panel-camera" role="tabpanel" aria-labelledby="tab-camera" hidden><div class="control-intro"><h2>摄影机</h2><p>固定曝光看变化。白平衡独立于灯的颜色。</p></div><div id="camera-controls"></div></div>
+    <div class="tab-panel" id="panel-scene" role="tabpanel" aria-labelledby="tab-scene" hidden><div class="control-intro"><h2>人像与黑棚</h2><p>脸朝向、表面和反射，都会改变光型。</p></div><div id="scene-controls"></div><button id="retry-model" class="wide-button" hidden>重试加载扫描人脸</button></div>
+    <div class="physics-foot"><span class="live-dot"></span><span>面积光 · 多次反弹 · 路径追踪</span><button id="limits-button" class="text-button">真实度说明</button></div>
+  </aside>
+</main>
+
+<dialog id="help-dialog" class="modal wide-modal"><div class="modal-heading"><div><span class="eyebrow">FIELD NOTES</span><h2>把虚拟灯位，变成现场直觉。</h2></div><button data-close class="icon-button" aria-label="关闭"><span data-icon="close"></span></button></div>
+  <div class="help-grid"><section><h3>第一次，花五分钟做这件事</h3><ol><li>选择「45° 面光」，先保留一盏主光。</li><li>把 60×60 八角罩换成 90×90 八角罩，观察鼻影边缘和额头高光。总功率不会跟着面积增加。</li><li>点击「设为 A」，再把灯移远。距离变化会同时影响亮度与柔度。</li><li>开轮廓光，用「单独看」检查耳缘、下颌和鼻尖是否溢光。</li><li>改变脸朝向。记住：相机的 45°，不等于脸的 45°。</li></ol><h3>这里的「功率」怎么理解</h3><p>每档 EV 让总光通量翻倍。0 EV 对应内部 1000 lm 的参考光源，用来比较关系。同一盏灯内可以把档位近似读作闪光功率档（−1 EV ≈ 1/2 输出，−4 EV ≈ 1/16）；不同灯具之间的绝对输出并未标定，不能当作 AD200Pro II 的 Ws 数值。</p><p>所有灯采用稳态连续发光模型；快门影响画面亮度。闪光同步时的快门规律、TTL、HSS 与闪光持续时间不在此版内。</p></section>
+  <section><h3>已在计算什么</h3><p>三维扫描人脸；矩形或圆形发光面；光源与表面的方向余弦；光程衰减；遮挡；软阴影；GGX 表面反射；黑棚墙地面和板材的多次反弹。每次采样重新追踪路径，不使用生成图片或预烘焙阴影。</p><h3>还不能当成什么</h3><p>皮肤目前是表面反射模型，没有完整次表面散射。扫描纹理可能残留采集时的明暗；观察光型优先用「中性雕塑」。没有精细眼球、毛发、妆面，也没有你的真实灯具配光、柔光布透射或深口箱内部结构。</p><p>圆形柔光箱是均匀发光圆盘，不能完全代替八角箱；深口抛罩的中心聚光效果也未模拟，按同直径圆盘计算。色温/色调采用 RGB 近似，无法复现不同 LED 光谱对服装和肤色的影响。曝光、色调映射与高光指示不是 A7C II、R7 或任何相机 RAW 的标定。</p><h3>如何看测光与高光</h3><p>右侧测光是在面部中心放一片朝脸正面的虚拟测光片，积分直射光，单位为参考 lx。它不计鼻子遮挡和反射补光；最终画面包含这些效应。高光条纹表示显示前某个线性通道 ≥ 1，是比较阈值，不是相机饱和证明。</p></section></div>
+  <div class="help-footer"><p>人脸：Lee Perry-Smith / Infinite Realities，经 Three.js 示例分发，CC BY 3.0；尺寸和材质在运行时调整。<a href="https://github.com/mrdoob/three.js/blob/r170/examples/models/gltf/LeePerrySmith/LeePerrySmith_License.txt" target="_blank" rel="noreferrer">原始素材许可</a> · <a href="./models/LeePerrySmith/LeePerrySmith_License.txt" target="_blank">本地许可</a> · 引擎：<a href="https://github.com/gkjohnson/three-gpu-pathtracer" target="_blank" rel="noreferrer">three-gpu-pathtracer</a> / <a href="https://threejs.org/" target="_blank" rel="noreferrer">Three.js</a></p><p>本地版无需登录或联网。方案保存在当前浏览器，也可导出 JSON 带走；固定使用同一个本地端口。快捷键：1 / 2 / 3 选灯，S 单独看，空格暂停采样。</p></div>
+</dialog>
+<dialog id="export-dialog" class="modal"><div class="modal-heading"><div><span class="eyebrow">TAKE IT WITH YOU</span><h2>保存这次练习</h2></div><button data-close class="icon-button" aria-label="关闭"><span data-icon="close"></span></button></div><button id="export-png" class="export-option"><span data-icon="image"></span><span><strong>摄影机画面 · PNG</strong><small>导出当前采样结果与显示模式</small></span><span>↗</span></button><button id="export-json" class="export-option"><span data-icon="code"></span><span><strong>完整布光方案 · JSON</strong><small>保留全部灯位、相机和场景数值，可重新导入</small></span><span>↗</span></button><button id="export-sheet" class="export-option"><span data-icon="book"></span><span><strong>现场参考卡 · HTML</strong><small>灯位图、设置表和笔记，可浏览器打印为 PDF</small></span><span>↗</span></button><label class="notes-label" for="study-notes">给下次拍摄的笔记</label><textarea id="study-notes" placeholder="例如：轮廓光再往后挪，别打亮鼻尖……" maxlength="4000"></textarea></dialog>
+<input type="file" id="import-file" accept="application/json,.json" hidden>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<noscript><div class="noscript">请启用 JavaScript 以运行三维布光室。</div></noscript>
+</body>
+</html>

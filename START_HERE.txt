@@ -1,0 +1,16 @@
+Cos Light Studio - local release 0.2.0
+
+1. Extract the complete ZIP into a folder.
+2. Install Python 3.8+ OR Node.js 22.12+ if neither is available.
+3. On Windows, double-click start-windows.cmd.
+4. Keep its window open; use http://127.0.0.1:5273/ in Chrome or Edge.
+
+Do not open index.html directly. Rendering uses your own GPU.
+The prepared release includes all renderer libraries, the head scan and textures.
+No runtime CDN connection or API key is needed.
+
+macOS: sh start-macos.command
+Linux: sh start-linux.sh
+
+See README.md for the Chinese guide, physical limits, troubleshooting and
+open-source publishing instructions. See THIRD_PARTY_NOTICES.md for attribution.

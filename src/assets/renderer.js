@@ -1,0 +1,246 @@
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {WebGLPathTracer, PhysicalCamera, ShapedAreaLight} from 'three-gpu-pathtracer';
+import {FACE, DEG, radiance, position, aim, cctToLinear, whiteBalanceGains, exposure} from './physics.js';
+import {effectiveLights,CAMERAS} from './state.js';
+import {prepareHeadGeometry} from './geometry.js';
+
+const ASSET_BASE=new URL('../models/LeePerrySmith/',import.meta.url);
+const colorLinear=(v)=>new THREE.Color().setRGB(v,v,v,THREE.LinearSRGBColorSpace);
+const vertex=`varying vec2 vUv; void main(){ vUv=uv; gl_Position=vec4(position.xy,0.,1.); }`;
+const fragment=`
+precision highp float;
+uniform sampler2D source;
+uniform vec3 wb;
+uniform float expGain;
+uniform int mode;
+uniform vec2 imageSize;
+varying vec2 vUv;
+vec3 aces(vec3 x){return clamp((x*(2.51*x+.03))/(x*(2.43*x+.59)+.14),0.,1.);}
+vec3 srgb(vec3 x){return mix(12.92*x,1.055*pow(max(x,vec3(0.)),vec3(1./2.4))-.055,step(vec3(.0031308),x));}
+vec3 falseColor(float y){
+  if(y<.008)return vec3(.13,.09,.28);
+  if(y<.035)return vec3(.16,.25,.60);
+  if(y<.10)return vec3(.18,.65,.77);
+  if(y<.26)return vec3(.31,.64,.43);
+  if(y<.55)return vec3(.91,.75,.32);
+  if(y<1.)return vec3(.88,.40,.22);
+  return vec3(1.,.12,.43);
+}
+void main(){
+  vec3 raw=max(texture2D(source,vUv).rgb,vec3(0.))*wb*expGain;
+  vec3 outColor=srgb(aces(raw));
+  if(mode==1 && max(max(raw.r,raw.g),raw.b)>=1.) {
+    float stripe=step(.5,fract((gl_FragCoord.x+gl_FragCoord.y)/12.));
+    outColor=mix(outColor,mix(vec3(.9,.18,.35),vec3(.15,.04,.1),stripe),.85);
+  }
+  if(mode==2)outColor=falseColor(dot(raw,vec3(.2126,.7152,.0722)));
+  gl_FragColor=vec4(outColor,1.);
+}`;
+
+async function fetchAsset(name,onProgress){
+  const response=await fetch(new URL(name,ASSET_BASE),{signal:AbortSignal.timeout(15000)});
+  if(!response.ok)throw new Error(`本地素材 ${name} 缺失（${response.status}）。请运行 npm run assets，然后重新启动。`);
+  const data=await response.arrayBuffer();onProgress?.(name);return data;
+}
+async function loadTexture(name,srgb=false){
+  const data=await fetchAsset(name);
+  const blob=new Blob([data],{type:'image/jpeg'});
+  const url=URL.createObjectURL(blob);
+  try{
+    const tex=await new THREE.TextureLoader().loadAsync(url);
+    tex.colorSpace=srgb?THREE.SRGBColorSpace:THREE.NoColorSpace;
+    tex.flipY=false;return tex;
+  }finally{URL.revokeObjectURL(url);}
+}
+
+export class StudioRenderer {
+  constructor(container,callbacks={}){
+    this.container=container;this.callbacks=callbacks;this.paused=false;this.ready=false;this.disposed=false;
+    this.frame=0;this.started=performance.now();this.lastStats=0;this.dirty=true;
+    this.renderer=new THREE.WebGLRenderer({antialias:false,alpha:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});
+    const gl=this.renderer.getContext();
+    if(typeof WebGL2RenderingContext==='undefined'||!(gl instanceof WebGL2RenderingContext)||!gl.getExtension('EXT_color_buffer_float'))throw new Error('这台设备没有可用的 WebGL 2 浮点渲染。请在桌面版 Chrome / Edge 开启硬件加速后重试。');
+    this.renderer.debug.onShaderError=()=>{this.shaderError=new Error('这台设备未能编译路径追踪着色器。请更新显卡驱动，在桌面 Chrome / Edge 中开启硬件加速后重试。');};
+    this.renderer.setPixelRatio(1);this.renderer.setClearColor(0x000000,1);
+    this.renderer.toneMapping=THREE.NoToneMapping;
+    this.renderer.outputColorSpace=THREE.LinearSRGBColorSpace;
+    this.renderer.domElement.setAttribute('aria-label','逐步收敛的物理路径追踪人像');
+    container.appendChild(this.renderer.domElement);
+    this.renderer.domElement.addEventListener('webglcontextlost',e=>{
+      e.preventDefault();this.paused=true;callbacks.error?.(new Error('显卡上下文中断。请保存方案，再刷新页面；也可以降低画质后重试。'));
+    });
+    this.scene=new THREE.Scene();this.scene.background=new THREE.Color(0);this.scene.environment=null;
+    this.envTexture=new THREE.DataTexture(new Float32Array([1,1,1,1,1,1,1,1]),2,1,THREE.RGBAFormat,THREE.FloatType);
+    this.envTexture.mapping=THREE.EquirectangularReflectionMapping;this.envTexture.needsUpdate=true;
+    this.camera=new PhysicalCamera(35,2/3,.03,30);
+    this.camera.position.set(0,FACE.y,1.65);this.camera.lookAt(0,FACE.y,0);
+    this.pt=new WebGLPathTracer(this.renderer);
+    this.pt.renderToCanvas=false;this.pt.rasterizeScene=false;this.pt.dynamicLowRes=false;
+    this.pt.minSamples=1;this.pt.renderDelay=60;this.pt.fadeDuration=0;
+    this.pt.tiles.set(2,2);this.pt.textureSize.set(512,512);
+    this.pt.filterGlossyFactor=.2;
+    this.screenScene=new THREE.Scene();this.screenCamera=new THREE.Camera();
+    this.screenMaterial=new THREE.ShaderMaterial({vertexShader:vertex,fragmentShader:fragment,depthTest:false,depthWrite:false,toneMapped:false,uniforms:{source:{value:null},wb:{value:new THREE.Vector3(1,1,1)},expGain:{value:.045},mode:{value:0},imageSize:{value:new THREE.Vector2(1,1)}}});
+    this.screenScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),this.screenMaterial));
+    this.lights=['key','rim','top'].map(()=>{const l=new ShapedAreaLight(0xffffff,1,1,1);this.scene.add(l);return l;});
+    this.buildRoom();this.buildObjects();
+    this.resizeObserver=new ResizeObserver(()=>this.resize());this.resizeObserver.observe(container);
+  }
+  buildRoom(){
+    this.wallMat=new THREE.MeshStandardMaterial({color:colorLinear(.025),roughness:1});
+    this.floorMat=new THREE.MeshStandardMaterial({color:colorLinear(.035),roughness:.95});
+    const wall=(w,h,p,r,mat=this.wallMat)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),mat);m.position.set(...p);m.rotation.set(...r);this.scene.add(m);return m;};
+    wall(8,6,[0,3,-2.6],[0,0,0]);
+    wall(8,8,[0,0,0],[-Math.PI/2,0,0],this.floorMat);
+    wall(8,6,[-4,3,0],[0,Math.PI/2,0]);wall(8,6,[4,3,0],[0,-Math.PI/2,0]);
+    wall(8,8,[0,4.5,0],[Math.PI/2,0,0]);
+    this.boardMat=new THREE.MeshStandardMaterial({color:colorLinear(.8),roughness:.95,side:THREE.DoubleSide});
+    this.board=new THREE.Mesh(new THREE.BoxGeometry(.025,1.1,.8),this.boardMat);this.board.visible=false;this.scene.add(this.board);
+  }
+  buildObjects(){
+    this.pivot=new THREE.Group();this.pivot.position.set(FACE.x,FACE.y,FACE.z);this.scene.add(this.pivot);
+    this.headMat=new THREE.MeshPhysicalMaterial({color:colorLinear(.55),roughness:.42,metalness:0,ior:1.42,specularIntensity:1});
+    this.head=null;this.skinMap=null;this.normalMap=null;
+    this.references=new THREE.Group();this.scene.add(this.references);this.references.visible=false;
+    const mats=[
+      new THREE.MeshStandardMaterial({color:colorLinear(.18),roughness:1}),
+      new THREE.MeshStandardMaterial({color:colorLinear(.85),roughness:.35}),
+      new THREE.MeshStandardMaterial({color:colorLinear(.8),roughness:.14,metalness:1})
+    ];
+    mats.forEach((mat,i)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(.105,48,32),mat);m.position.set((i-1)*.245,FACE.y,0);this.references.add(m);});
+    const ground=new THREE.Mesh(new THREE.BoxGeometry(.86,.03,.55),new THREE.MeshStandardMaterial({color:colorLinear(.18),roughness:1}));
+    ground.position.set(0,FACE.y-.12,0);this.references.add(ground);
+    // A plain neck stand is intentionally a study pedestal, not a fabricated body.
+    const standMat=new THREE.MeshStandardMaterial({color:colorLinear(.035),roughness:.7});
+    this.stand=new THREE.Mesh(new THREE.CylinderGeometry(.075,.105,.25,48),standMat);
+    this.stand.position.set(0,-.235,-.018);this.pivot.add(this.stand);
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(.15,.15,.025,64),standMat);base.position.set(0,-.37,-.018);this.pivot.add(base);
+  }
+  async init(state){
+    this.state=state;this.callbacks.progress?.('正在加载人脸扫描 · 约 0.4 MB');
+    let scanError=null;
+    try{
+      const data=await fetchAsset('LeePerrySmith.glb');
+      const gltf=await new GLTFLoader().parseAsync(data,'');
+      let source;gltf.scene.updateMatrixWorld(true);
+      gltf.scene.traverse(o=>{if(o.isMesh&&!source)source=o;});
+      if(!source)throw new Error('扫描中没有可用的人脸网格');
+      const geo=prepareHeadGeometry(source);
+      this.head=new THREE.Mesh(geo,this.headMat);this.pivot.add(this.head);
+      this.callbacks.asset?.({scan:true,textures:false,triangles:Math.round((geo.index?.count||geo.attributes.position.count)/3)});
+    }catch(e){
+      scanError=e;state.model.object='spheres';this.callbacks.asset?.({scan:false,textures:false,error:e.message});
+    }
+    this.callbacks.progress?.('正在准备光线追踪 · 首次着色器编译稍慢');
+    this.apply(state,'scene');this.ready=true;this.resize();this.pt.updateCamera();this.pt.reset();this.animate();
+    if(scanError)this.callbacks.notice?.('本地人脸扫描未能加载，已切换到材质球练习。请检查素材文件后重试。');
+    else this.loadSkinTextures();
+  }
+  async loadSkinTextures(){
+    const res=await Promise.allSettled([loadTexture('Map-COL.jpg',true),loadTexture('Infinite-Level_02_Tangent_SmoothUV.jpg')]);
+    if(this.disposed){res.forEach(x=>x.status==='fulfilled'&&x.value.dispose());return;}
+    this.skinMap=res[0].status==='fulfilled'?res[0].value:null;
+    this.normalMap=res[1].status==='fulfilled'?res[1].value:null;
+    this.callbacks.asset?.({scan:!!this.head,textures:!!this.skinMap,partial:!this.normalMap});
+    if(this.state.model.material==='skin')this.apply(this.state,'materials');
+  }
+  apply(state,kind='lights'){
+    this.state=state;const {camera:c,model:m,room:r,render:q}=state;
+    if(kind==='display'){this.updateDisplay();this.dirty=true;return;}
+    effectiveLights(state).forEach((item,i)=>{
+      const l=this.lights[i],p=position(item),a=aim(item);
+      l.position.set(p.x,p.y,p.z);l.lookAt(a.x,a.y,a.z);l.rotateZ(item.roll*DEG);
+      const rgb=cctToLinear(item.kelvin,item.tint);l.color.setRGB(...rgb,THREE.LinearSRGBColorSpace);
+      l.intensity=radiance(item);l.width=item.width;l.height=item.height;l.isCircular=item.shape==='disk';
+    });
+    this.pivot.rotation.set(m.pitch*DEG,m.yaw*DEG,0,'YXZ');
+    this.pivot.visible=m.object==='head'&&!!this.head;this.references.visible=!this.pivot.visible;
+    const skin=m.material==='skin'&&this.skinMap;
+    this.headMat.color.copy(colorLinear(skin?m.skinTone:m.material==='gray'?.18:.55));
+    this.headMat.map=skin?this.skinMap:null;this.headMat.normalMap=m.material==='skin'?this.normalMap:null;
+    this.headMat.normalScale.set(.65,.65);this.headMat.roughness=m.roughness;this.headMat.needsUpdate=true;
+    this.wallMat.color.copy(colorLinear(r.reflectance));this.floorMat.color.copy(colorLinear(r.floor));
+    // A uniform background emits only when explicitly enabled by the user.
+    this.scene.background.setRGB(r.background,r.background,r.background,THREE.LinearSRGBColorSpace);
+    this.scene.backgroundIntensity=1;
+    this.scene.environment=r.background>0?this.envTexture:null;
+    this.scene.environmentIntensity=r.background;
+    this.board.visible=r.board!=='off';
+    this.boardMat.color.copy(colorLinear(r.board==='black'?.008:r.board==='silver'?.88:.8));
+    this.boardMat.metalness=r.board==='silver'?1:0;this.boardMat.roughness=r.board==='silver'?.23:.95;
+    this.board.rotation.set(0,0,0);this.board.scale.set(1,1,1);
+    if(r.board==='below'){
+      this.board.position.set(0,FACE.y-.4,.18);this.board.rotation.set(0,0,Math.PI/2);this.board.rotateY(-.18);
+    }else{
+      this.board.position.set(r.boardSide*r.boardDistance,r.boardHeight,.1);
+      this.board.rotation.y=r.boardSide*r.boardAngle*DEG;
+    }
+    this.camera.position.set(0,FACE.y,c.distance);this.camera.lookAt(0,FACE.y-.025,0);
+    const body=CAMERAS.find(b=>b.id===c.body);
+    this.camera.filmGauge=body?body.sensor:36;
+    this.camera.setFocalLength(c.focal);
+    this.camera.focusDistance=c.dof?c.focus:c.distance;
+    if(c.dof)this.camera.fStop=c.aperture;else this.camera.bokehSize=0;
+    this.camera.updateProjectionMatrix();this.camera.updateMatrixWorld(true);
+    this.pt.bounces=q.bounces;
+    this.scene.updateMatrixWorld(true);
+    if(kind==='scene'||kind==='geometry')this.pt.setScene(this.scene,this.camera);
+    else if(kind==='camera')this.pt.updateCamera();
+    else if(kind==='materials'){this.pt.updateMaterials();this.pt.updateEnvironment();}
+    else this.pt.updateLights();
+    this.pt.reset();this.started=performance.now();this.dirty=true;
+    this.updateDisplay();
+    if(this.quality!==q.quality){this.quality=q.quality;this.resize();}
+  }
+  updateDisplay(){
+    const c=this.state.camera;
+    this.screenMaterial.uniforms.wb.value.set(...whiteBalanceGains(c.wb,c.tint));
+    this.screenMaterial.uniforms.expGain.value=exposure(c);
+    this.screenMaterial.uniforms.mode.value={beauty:0,clip:1,falsecolor:2}[this.state.render.diagnostic]||0;
+  }
+  resize(){
+    if(!this.state)return;
+    const rect=this.container.getBoundingClientRect();if(rect.width<1||rect.height<1)return;
+    const ratio={draft:.55,balanced:.9,fine:1.5}[this.state.render.quality];
+    const max={draft:480,balanced:900,fine:1600}[this.state.render.quality];
+    const scale=Math.min(ratio,max/Math.max(rect.width,rect.height));
+    const width=Math.max(128,Math.round(rect.width*scale)),height=Math.max(128,Math.round(rect.height*scale));
+    const size=this.renderer.getSize(new THREE.Vector2());
+    if(size.x===width&&size.y===height)return;
+    this.renderer.setSize(width,height,false);this.camera.aspect=width/height;
+    this.camera.setFocalLength(this.state.camera.focal);this.camera.updateProjectionMatrix();
+    if(this.ready){this.pt.updateCamera();this.pt.reset();}
+    this.dirty=true;this.callbacks.resolution?.({width,height});
+  }
+  animate(){
+    if(this.disposed)return;
+    this.frame=requestAnimationFrame(()=>this.animate());
+    if(document.hidden||!this.ready)return;
+    try{
+      const shouldSample=!this.paused&&this.pt.samples<this.state.render.maxSamples;
+      if(shouldSample){this.pt.renderSample();if(this.shaderError)throw this.shaderError;this.dirty=true;}
+      if(this.dirty&&this.pt.target){
+        this.screenMaterial.uniforms.source.value=this.pt.target.texture;
+        this.renderer.setRenderTarget(null);this.renderer.render(this.screenScene,this.screenCamera);this.dirty=false;
+      }
+      const now=performance.now();
+      if(now-this.lastStats>400){
+        this.callbacks.stats?.({samples:Math.floor(this.pt.samples),elapsed:(now-this.started)/1000,paused:this.paused,complete:this.pt.samples>=this.state.render.maxSamples});this.lastStats=now;
+      }
+    }catch(e){this.paused=true;this.ready=false;this.callbacks.error?.(e);}
+  }
+  setPaused(value){this.paused=value;}
+  reset(){this.pt.reset();this.started=performance.now();this.paused=false;this.dirty=true;}
+  async capture(){
+    if(!this.ready||this.pt.samples<1)throw new Error('请等画面至少完成一次采样');
+    return new Promise((resolve,reject)=>this.renderer.domElement.toBlob(blob=>blob?resolve(blob):reject(new Error('无法导出画面')),'image/png'));
+  }
+  dispose(){
+    this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.pt.dispose();
+    const geometries=new Set(),materials=new Set(),textures=new Set([this.skinMap,this.normalMap,this.envTexture]);
+    for(const s of [this.scene,this.screenScene])s.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m));});
+    geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t?.dispose());
+    this.renderer.dispose();this.renderer.domElement.remove();
+  }
+}
