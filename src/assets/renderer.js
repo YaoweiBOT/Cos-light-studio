@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WebGLPathTracer, PhysicalCamera, ShapedAreaLight, PhysicalSpotLight} from 'three-gpu-pathtracer';
 import {FACE, DEG, radiance, position, aim, cctToLinear, whiteBalanceGains, exposure} from './physics.js';
-import {aimedLights} from './state.js';
+import {aimedLights,CAMERAS} from './state.js';
 import {createCharacter,createProp,disposeGenerated} from './characters.js';
 import {facePoint} from './posing.js';
 import {configureLight} from './scene-light.js';
@@ -190,7 +190,8 @@ export class StudioRenderer {
     this.board2.position.set(-r.boardSide*r.board2Distance,r.board2Height,.1);
     this.board2.rotation.y=-r.boardSide*r.board2Angle*DEG;this.board2.scale.set(1,r.board2Size,r.board2Width);
     this.camera.position.set(0,c.heightY,c.distance);this.camera.lookAt(0,c.targetY,0);
-    this.camera.filmGauge=c.sensor==='apsc'?22.3:36;
+    const body=CAMERAS.find(b=>b.id===c.body);
+    this.camera.filmGauge=body?body.sensor:36;
     this.camera.setFocalLength(c.focal);
     this.camera.focusDistance=c.dof?c.focus:c.distance;
     if(c.dof)this.camera.fStop=c.aperture;else this.camera.bokehSize=0;
