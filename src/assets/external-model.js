@@ -1,4 +1,4 @@
-/* External humanoid models: shipped CC0 VRoid sample and user-imported files
+﻿/* External humanoid models: shipped CC0 VRoid sample and user-imported files
    (e.g. fan-distributed game models). Imports live in the browser's IndexedDB
    only; they never touch the repository or any server. */
 import * as THREE from 'three';
@@ -99,17 +99,26 @@ async function loadPMXSource(source){
   // MMDLoader, so parse directly with mmd-parser (MIT).
   const {default:MMDParser}=await import('mmd-parser');
   const pmx=new MMDParser.Parser().parsePmx(source.data,true);
+  
   const group=new THREE.Group();
   const textureLoader=new THREE.TextureLoader();
+  // PMX stores faces as {indices:[a,b,c]} grouped per material in order.
+  let faceCursor=0;
   for(const material of pmx.materials){
-    const count=material.faceVertCount,offset=material.faceOffsetCount;
-    const pos=new Float32Array(count*3),nor=new Float32Array(count*3),uv=new Float32Array(count*2);
-    for(let f=0;f<count/3;f++)for(let k=0;k<3;k++){
-      const i=pmx.indices[offset+f*3+k],v=pmx.vertices[i],o=f*3+k;
-      pos[o*3]=v.position[0];pos[o*3+1]=v.position[1];pos[o*3+2]=v.position[2];
-      nor[o*3]=v.normal[0];nor[o*3+1]=v.normal[1];nor[o*3+2]=v.normal[2];
-      uv[o*2]=v.uv[0];uv[o*2+1]=1-v.uv[1];
+    const triCount=material.faceCount|0;
+    const pos=new Float32Array(triCount*9),nor=new Float32Array(triCount*9),uv=new Float32Array(triCount*6);
+    for(let f=0;f<triCount;f++){
+      const face=pmx.faces[faceCursor+f].indices;
+      for(let k=0;k<3;k++){
+        let vi=face[k];if(vi<0)vi=-vi-1; // PMX 负索引表示翻转朝向
+        const v=pmx.vertices[vi];if(!v)continue;
+        const o=(f*3+k)*3,ou=(f*3+k)*2;
+        pos[o]=v.position[0];pos[o+1]=v.position[1];pos[o+2]=v.position[2];
+        nor[o]=v.normal[0];nor[o+1]=v.normal[1];nor[o+2]=v.normal[2];
+        uv[ou]=v.uv[0];uv[ou+1]=1-v.uv[1];
+      }
     }
+    faceCursor+=triCount;
     const geo=new THREE.BufferGeometry();
     geo.setAttribute('position',new THREE.BufferAttribute(pos,3));
     geo.setAttribute('normal',new THREE.BufferAttribute(nor,3));

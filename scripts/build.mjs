@@ -20,6 +20,7 @@ export async function buildApp(){
   if(await exists(resolve(ROOT,'assets/VRoid/Sendagaya_Shino.vrm')))await cp(resolve(ROOT,'assets/VRoid'),resolve(DIST,'models/VRoid'),{recursive:true});
   else console.warn('没有找到 VRoid CC0 示例人物，人物下拉将缺少该选项。');
   if(await exists(resolve(ROOT,'assets/MMD')))await cp(resolve(ROOT,'assets/MMD'),resolve(DIST,'models/MMD'),{recursive:true});
+  if(await exists(resolve(ROOT,'assets/custom')))await cp(resolve(ROOT,'assets/custom'),resolve(DIST,'models/custom'),{recursive:true});
   await mkdir(resolve(DIST,'licenses'),{recursive:true});
   await copyFile(resolve(ROOT,'LICENSE'),resolve(DIST,'licenses/Cos-Light-Studio-MIT.txt'));
   await copyFile(resolve(ROOT,'THIRD_PARTY_NOTICES.md'),resolve(DIST,'licenses/THIRD_PARTY_NOTICES.md'));

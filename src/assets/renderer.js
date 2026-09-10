@@ -338,7 +338,7 @@ export class StudioRenderer {
     if(!value&&this.ready)this.apply(this.state,'scene').catch(e=>this.callbacks.error?.(e));
   }
   jointPoints(detail='body'){
-    if(!this.character||this.state.model.object==='spheres')return [];
+    if(!this.character||this.state.model.object==='spheres'||this.character.userData.externalKind)return [];
     if(!this.character.userData.mmd)return [{id:'head',label:'头部',kind:'head',position:this.character.userData.head.getWorldPosition(new THREE.Vector3())}];
     const u=this.character.userData;
     return JOINTS.filter(j=>detail==='hands'?j.detail==='hands':!j.detail).flatMap(j=>{
@@ -354,7 +354,7 @@ export class StudioRenderer {
   dispose(){
     this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.pt.dispose();
     this.albedoTarget.dispose();this.basicMaterials.forEach(m=>m.dispose());this.basicMaterials.clear();
-    this.characterCache.forEach(disposeMMDCharacter);this.characterCache.clear();
+    this.characterCache.forEach(root=>{if(root.userData.mmd)disposeMMDCharacter(root);});disposeExternal();this.characterCache.clear();
     const geometries=new Set(),materials=new Set(),textures=new Set([this.skinMap,this.normalMap,this.envTexture]);
     for(const s of [this.scene,this.screenScene])s.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m));});
     geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t?.dispose());

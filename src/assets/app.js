@@ -1,4 +1,4 @@
-import {defaults,clone,validateState,PRESETS,MODIFIERS,CAMERAS,LENSES,FLASHES,presetState,aimedLights,switchCharacter,renameStudy} from './state.js';
+﻿import {defaults,clone,validateState,PRESETS,MODIFIERS,CAMERAS,LENSES,FLASHES,presetState,aimedLights,switchCharacter,renameStudy} from './state.js';
 import {clamp,meter,angularSize,frontalNormal,displayLightColor,beamDiameter,spotIntensity} from './physics.js';
 import {ElevationDiagram,PoseEditor} from './editors.js';
 import {posePreset,CHARACTERS,HAIRSTYLES,HAIR_COLORS,POSES,LIMBS,LABELS,setPose,frameSubject,facePoint,rigPose} from './posing.js';
@@ -295,6 +295,7 @@ async function startEngine(){
       }
     });
     await engine.init(state);
+    window.__engine=engine; // DEBUG
     viewportControls?.update();
     // A preset can be changed while the scan is downloading.
     if(engine.state!==state)await engine.apply(state,'scene');
