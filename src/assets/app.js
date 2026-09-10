@@ -1,4 +1,4 @@
-import {defaults,clone,validateState,PRESETS,MODIFIERS,presetState,aimedLights,switchCharacter,renameStudy} from './state.js';
+import {defaults,clone,validateState,PRESETS,MODIFIERS,CAMERAS,LENSES,FLASHES,presetState,aimedLights,switchCharacter,renameStudy} from './state.js';
 import {clamp,meter,angularSize,frontalNormal,displayLightColor,beamDiameter,spotIntensity} from './physics.js';
 import {ElevationDiagram,PoseEditor} from './editors.js';
 import {posePreset,CHARACTERS,HAIRSTYLES,HAIR_COLORS,POSES,LIMBS,LABELS,setPose,frameSubject,facePoint,rigPose} from './posing.js';
@@ -50,12 +50,15 @@ const section=title=>`<div class="control-section-title">${title}</div>`;
 
 function renderLightControls(){
   const l=currentLight();$('selected-light-name').textContent=l.name;
-  const mod=l.type!=='fresnel'&&MODIFIERS.find(m=>m.shape===l.shape&&m.width===l.width&&m.height===l.height);
+  const mod=l.type==='fresnel'?undefined:MODIFIERS.find(m=>l.modifier?m.id===l.modifier&&m.shape===l.shape&&m.width===l.width&&m.height===l.height:m.shape===l.shape&&m.width===l.width&&m.height===l.height);
+  const group=key=>MODIFIERS.filter(m=>m.group===key).map(m=>`<option value="${m.id}" ${mod?.id===m.id?'selected':''}>${m.label}</option>`).join('');
   $('light-controls').innerHTML=`
     ${select('灯具类型','light.type',[['area','柔光箱 / 均匀面积光'],['fresnel','菲涅尔 · 光束近似']])}
-    <div class="select-row"><label for="modifier-select">发光面</label><select id="modifier-select"><option value="custom" ${!mod?'selected':''}>${l.type==='fresnel'?'当前使用菲涅尔':'自定义发光面'}</option>${MODIFIERS.map(m=>`<option value="${m.id}" ${mod?.id===m.id?'selected':''}>${m.label}</option>`).join('')}</select></div>
+    <div class="select-row"><label for="flash-select">灯体标注</label><select id="flash-select" aria-label="这盏灯对应哪支闪光灯">${FLASHES.map(f=>`<option value="${f.id}" ${l.flash===f.id?'selected':''}>${f.label}</option>`).join('')}</select></div>
+    <p class="control-hint">标注只影响清单和参考卡；发光与功率仍按下方参数计算。</p>
+    <div class="select-row"><label for="modifier-select">发光面</label><select id="modifier-select"><option value="custom" ${!mod?'selected':''}>${l.type==='fresnel'?'当前使用菲涅尔':'自定义发光面'}</option><optgroup label="我的柔光箱 / 灯体">${group('kit')}</optgroup><optgroup label="通用练习发光面">${group('generic')}</optgroup></select></div>
     ${range('总功率','light.power',-6,4,.1,'EV')}
-    <p class="control-hint">+1 EV = 总光通量 ×2。<br>调整尺寸时保持总功率，不等同于闪光灯档位。</p>
+    <p class="control-hint">+1 EV = 总光通量 ×2。同一盏灯内可近似读作闪光功率档：−1 EV ≈ 1/2 输出，−4 EV ≈ 1/16；不同灯具之间的绝对输出未标定。</p>
     ${section('位置 / POSITION')}
     ${range('方位角','light.azimuth',-180,180,1,'°')}
     <p class="control-hint">0° 在相机侧；±180° 在人物后方。负值在画面左侧。</p>
@@ -72,17 +75,21 @@ function renderLightControls(){
       ${range('左右瞄准','light.aimX',-1,1,.01,'m')}${range('上下瞄准偏移','light.aimY',-.8,.8,.01,'m')}${range('前后瞄准','light.aimZ',-1,1,.01,'m')}${range('发光面旋转','light.roll',-180,180,1,'°')}
       <p class="control-hint">瞄准偏移以面部中心为原点。矩形长边会随旋转改变方向。</p>
     </details>`;
-  $('modifier-select').addEventListener('change',e=>{const m=MODIFIERS.find(x=>x.id===e.target.value);if(m){Object.assign(l,{type:'area',shape:m.shape,width:m.width,height:m.height});renderLightControls();changed('lights');}});
+  $('modifier-select').addEventListener('change',e=>{const m=MODIFIERS.find(x=>x.id===e.target.value);if(m){Object.assign(l,{type:'area',shape:m.shape,width:m.width,height:m.height,modifier:m.id});renderLightControls();changed('lights');}else{l.modifier='';renderLightControls();changed('lights');}});
+  $('flash-select').addEventListener('change',e=>{l.flash=e.target.value;changed('display');});
   updateLightList();updateReadouts();
 }
 function renderCameraControls(){
+  const lens=LENSES.find(l=>l.id===state.camera.lens)||LENSES[0];
   $('camera-controls').innerHTML=`
-    ${select('感光元件','camera.sensor',[['apsc','APS-C · 22.3 mm / R7 视角'],['full','全画幅 · 36 mm']])}
+    ${select('机身','camera.body',CAMERAS.map(c=>[c.id,`${c.label} · ${c.note}`]))}
+    ${select('镜头','camera.lens',LENSES.map(l=>[l.id,l.label]))}
+    <p class="control-hint">${lens.id==='custom'?'未限定型号：焦距 18–120 mm、光圈 ƒ/1.4 起自由调节。':`${lens.label} · ${lens.min}–${lens.max} mm · 最大 ƒ/${lens.aperture}。焦距与光圈已按镜头限制。`}</p>
     ${select('画幅','camera.frame',[['portrait','竖幅 · 2:3'],['square','方形 · 1:1'],['landscape','横幅 · 3:2']])}
-    ${range('焦距','camera.focal',18,120,1,'mm')}${range('相机前后距离','camera.distance',.5,6,.01,'m')}
+    ${range('焦距','camera.focal',lens.min,lens.max,1,'mm')}${range('相机前后距离','camera.distance',.5,6,.01,'m')}
     ${range('相机高度','camera.heightY',.2,3,.01,'m')}${range('取景中心高度','camera.targetY',.1,2.5,.01,'m')}${section('固定曝光 / EXPOSURE')}
     ${range('相机横移','camera.x',-2,2,.01,'m')}${range('相机绕拍角度','camera.azimuth',-180,180,1,'°')}
-    ${range('光圈','camera.aperture',1.4,16,.1,'f')}
+    ${range('光圈','camera.aperture',lens.aperture,16,.1,'f')}
     ${range('快门 · 1 /','camera.shutter',15,1000,1,'s')}
     ${range('感光度','camera.iso',50,3200,50,'ISO')}
     ${range('曝光补偿','camera.ev',-5,5,.1,'EV')}
@@ -144,7 +151,9 @@ function renderSceneControls(){
   $('samples-select').addEventListener('change',e=>{state.render.maxSamples=Number(e.target.value);if(engine){engine.state=state;engine.setPaused(false);}persist();});
 }
 function updateLightList(){
-  $('light-list').innerHTML=state.lights.map(l=>`<div class="light-row ${l.id===state.selected?'active':''} ${l.enabled?'':'disabled'}" data-light="${l.id}" tabindex="0" role="button" aria-label="编辑${l.name}"><span class="light-symbol" style="color:${l.color}">${l.role}</span><span class="light-name"><strong>${l.name}</strong><small>${l.power>0?'+':''}${l.power.toFixed(1)} EV · ${l.kelvin} K</small></span><button class="light-toggle" role="switch" aria-label="开关${l.name}" aria-checked="${l.enabled}" data-toggle="${l.id}"></button></div>`).join('');
+  $('light-list').innerHTML=state.lights.map(l=>{
+    const flash=FLASHES.find(f=>f.id===l.flash)?.short;
+    return `<div class="light-row ${l.id===state.selected?'active':''} ${l.enabled?'':'disabled'}" data-light="${l.id}" tabindex="0" role="button" aria-label="编辑${l.name}"><span class="light-symbol" style="color:${l.color}">${l.role}</span><span class="light-name"><strong>${l.name}${flash?` · ${flash}`:''}</strong><small>${l.power>0?'+':''}${l.power.toFixed(1)} EV · ${l.kelvin} K</small></span><button class="light-toggle" role="switch" aria-label="开关${l.name}" aria-checked="${l.enabled}" data-toggle="${l.id}"></button></div>`;}).join('');
   $('solo-button').setAttribute('aria-pressed',String(state.solo===state.selected));$('solo-button').textContent=state.solo===state.selected?'退出单独看':'单独看';
 }
 function renderPresets(){
@@ -159,7 +168,8 @@ function updateReadouts(){
   const b=$('softness-hint');if(b)b.textContent=`至面心 ${a.distance.toFixed(2)} m · 发光面张角约 ${a.width.toFixed(1)}° × ${a.height.toFixed(1)}°。越大的视张角通常带来越柔的阴影。`;
   const f=$('fresnel-readout');if(f)f.textContent=`距面心 ${a.distance.toFixed(2)} m · 该距离光束外缘直径约 ${beamDiameter(l,a.distance).toFixed(2)} m · 中心光强 ${spotIntensity(l).toFixed(0)} cd*`;
   $('strip-focal').innerHTML=`${c.focal} <small>mm</small>`;$('strip-aperture').textContent=`ƒ/${c.aperture}`;$('strip-shutter').textContent=`1/${c.shutter}`;$('strip-iso').textContent=c.iso;$('strip-wb').innerHTML=`${c.wb} <small>K</small>`;
-  $('lens-label').textContent=`${c.sensor==='apsc'?'R7 视角':'全画幅'} · ${c.focal} mm`;
+  const body=CAMERAS.find(x=>x.id===c.body);
+  $('lens-label').textContent=`${body?.short||'相机'} · ${c.focal} mm`;
   const n=frontalNormal(state.model.yaw+state.model.bodyYaw,state.model.pitch),effective=aimedLights(state),readings=effective.map(x=>meter(x,undefined,n,16)),total=readings.reduce((a,b)=>a+b,0),index=state.lights.findIndex(x=>x.id===l.id);
   $('meter-value').textContent=`${total.toFixed(1)} lx*`;$('meter-detail').textContent=`${l.name} ${readings[index].toFixed(1)} / 合计 ${total.toFixed(1)} · 仅直射估计`;$('meter-bar').style.width=`${clamp(Math.log2(total+1)/12*100,0,100)}%`;
   $('quality-select').value=state.render.quality;
@@ -218,10 +228,20 @@ function handleControl(e){
   let kind='lights';
   if(scope==='light'){
     if(key==='type')renderLightControls();
-    if(['width','height','shape'].includes(key))$('modifier-select').value=MODIFIERS.find(m=>m.shape===target.shape&&m.width===target.width&&m.height===target.height)?.id||'custom';
+    if(['width','height','shape'].includes(key)){
+      const m=MODIFIERS.find(m=>m.shape===target.shape&&m.width===target.width&&m.height===target.height);
+      target.modifier=target.type==='fresnel'?'':m?.id||'';
+      const sel=$('modifier-select');if(sel)sel.value=m?.id||'custom';
+    }
   }else if(scope==='camera'){
     kind=['ev','wb','tint','shutter','iso'].includes(key)||key==='aperture'&&!state.camera.dof?'display':'camera';
     if(key==='frame'){resizeFrame();kind='camera';hideCompare();}
+    if(key==='lens'){
+      const lens=LENSES.find(x=>x.id===val)||LENSES[0];
+      state.camera.focal=clamp(state.camera.focal,lens.min,lens.max);
+      state.camera.aperture=Math.max(state.camera.aperture,lens.aperture);
+      renderCameraControls();
+    }
   }else if(scope==='model'){
     kind='geometry';
     if(path.startsWith('model.pose.')){state.model.pose.id='custom';if(poseEditor)poseEditor.draw();}

@@ -67,6 +67,30 @@ test('invalid imports cannot inject unsafe values or unbounded work',()=>{
   const s=defaults();s.lights[0].width=-10;s.camera.iso=1e99;s.render.maxSamples=Infinity;s.render.bounces=999;s.model.material='arbitrary';s.model.skinTone=8;s.room.boardSide=.3;
   const v=validateState(s);assert.equal(v.lights[0].width,.05);assert.equal(v.camera.iso,3200);assert.equal(v.render.maxSamples,256);assert.equal(v.render.bounces,12);assert.equal(v.model.material,'skin');assert.equal(v.model.skinTone,1);assert.equal(v.room.boardSide,1);
 });
+test('selected lens constrains imported focal length and aperture',()=>{
+  const s=defaults();s.camera.lens='tamron-2875-g2';s.camera.focal=100;s.camera.aperture=1.4;
+  const v=validateState(s);assert.equal(v.camera.focal,75);assert.equal(v.camera.aperture,2.8);
+});
+test('legacy sensor field migrates to a body and unknown bodies fall back',()=>{
+  const apsc=defaults();delete apsc.camera.body;apsc.camera.sensor='apsc';
+  assert.equal(validateState(apsc).camera.body,'canon-r7');
+  const full=defaults();delete full.camera.body;full.camera.sensor='full';
+  assert.equal(validateState(full).camera.body,'sony-a7c2');
+  const bad=defaults();bad.camera.body='nonsense';
+  assert.equal(validateState(bad).camera.body,'sony-a7c2');
+});
+test('modifier and flash labels are validated or derived from emitter size',()=>{
+  const s=defaults();s.lights[0].modifier='bogus';s.lights[0].flash='bogus';
+  const v=validateState(s);assert.equal(v.lights[0].modifier,'octa60');assert.equal(v.lights[0].flash,'ad200-1');
+  const legacy=defaults();delete legacy.lights[0].modifier;
+  assert.equal(validateState(legacy).lights[0].modifier,'octa60');
+  const fresnel=defaults();fresnel.lights[0].type='fresnel';fresnel.lights[0].modifier='';
+  assert.equal(validateState(fresnel).lights[0].modifier,'');
+});
+test('deep parabolic modifier survives export and import as a distinct label',()=>{
+  const s=defaults();s.lights[0].modifier='deep90';s.lights[0].width=.9;s.lights[0].height=.9;
+  const v=validateState(JSON.parse(JSON.stringify(s)));assert.equal(v.lights[0].modifier,'deep90');
+});
 test('reference card escapes user notes and names',()=>{
   const s=defaults();s.name='<script>alert(1)</script>';s.notes='</p><img src=x onerror=alert(1)>';
   const html=makeSheet(s,'data:image/png;base64,abc');assert.ok(!html.includes('<script>'));assert.ok(!html.includes('<img src=x'));assert.ok(html.includes('&lt;script&gt;'));assert.equal(escapeHTML('a&b'),'a&amp;b');assert.equal(safeFilename('a/b:c'),'a_b_c');

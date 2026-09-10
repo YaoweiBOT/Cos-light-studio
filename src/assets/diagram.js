@@ -1,5 +1,5 @@
 import {position,aim,angularSize,DEG,wrapAngle,clamp} from './physics.js';
-import {aimedLights} from './state.js';
+import {aimedLights,CAMERAS} from './state.js';
 import {cameraPosition} from './viewport-math.js';
 
 export class LightingDiagram {
@@ -37,7 +37,8 @@ export class LightingDiagram {
     c.setLineDash([3,7]);c.strokeStyle='#2e333a';c.beginPath();c.moveTo(cx,18);c.lineTo(cx,h-18);c.moveTo(18,cy);c.lineTo(w-18,cy);c.stroke();c.setLineDash([]);
     c.font='14px system-ui';c.fillStyle='#596472';c.textAlign='center';c.fillText('后侧',cx,23);c.fillText('相机侧',cx,h-16);
     const frameAspect={portrait:2/3,square:1,landscape:1.5}[s.camera.frame];
-    const filmWidth=(s.camera.sensor==='apsc'?22.3:36)*Math.min(frameAspect,1);
+    const bodySensor=CAMERAS.find(b=>b.id===s.camera.body)?.sensor??36;
+    const filmWidth=bodySensor*Math.min(frameAspect,1);
     const cp=cameraPosition(s.camera),camera=this.at(cp.x,cp.z),fov=2*Math.atan(filmWidth/(2*s.camera.focal)),aCam=(s.camera.azimuth||0)*DEG,span=Math.tan(fov/2)*s.camera.distance;
     const edge1=this.at(s.camera.x-span*Math.cos(aCam),span*Math.sin(aCam)),edge2=this.at(s.camera.x+span*Math.cos(aCam),-span*Math.sin(aCam));
     c.fillStyle='#8995a50c';c.beginPath();c.moveTo(camera.x,camera.y);c.lineTo(edge1.x,edge1.y);c.lineTo(edge2.x,edge2.y);c.closePath();c.fill();
