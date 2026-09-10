@@ -19,9 +19,11 @@ Cos Light Studio 是一个本地运行的三维摄影布光学习工具。它用
 **这是本地网页应用。** 浏览器负责界面和显卡渲染，本机小服务器负责读取随包文件。无需账号、API Key 或云端渲染服务。发布包包含完整源码、渲染库的构建结果、人脸模型和贴图；正常运行不向 CDN 下载依赖。
 
 **使用案例：**
+
 <img width="761" height="882" alt="3fae6492e2f91e6808c606198c968acb" src="https://github.com/user-attachments/assets/c406e878-20ab-486f-9871-fedc8982f8a8" />
 <img width="1266" height="1053" alt="faf3b211db92af137c28579a1f129a9e" src="https://github.com/user-attachments/assets/55a43422-07a7-460b-8d80-fd9c0bdfeda8" />
 <img width="723" height="804" alt="473e254874c4e45a4b893f5943197c11" src="https://github.com/user-attachments/assets/ca3b1651-a7c2-4ad8-9e97-cacd20518e66" />
+
 含模型本地化整合包请联系：**qq1275225871 (请标注来意)**
 
 ## 最快开始
