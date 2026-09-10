@@ -3,6 +3,6 @@ export const MMD_CHARACTERS = [
   {id:'yixuan',name:'仪玄 · 墨形影踪',file:'仪玄.pmx',author:'观海子'},
   {id:'jiayin',name:'耀嘉音 · 水晶灯下',file:'耀嘉音.pmx',author:'观海子'},
   {id:'velina',name:'维琳娜',file:'维琳娜6.pmx',author:'去看流星雨'},
-  {id:'qianxia',name:'千夏 · 午后茶歇',file:'千夏皮肤.pmx',author:'模之屋配布'},
+  {id:'qianxia',name:'千夏 · 午后茶歇',file:'qianxia.pmx',author:'模之屋配布'},
 ];
 export const isMMD=id=>MMD_CHARACTERS.some(c=>c.id===id);
