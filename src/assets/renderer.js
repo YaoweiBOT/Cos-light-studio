@@ -3,6 +3,8 @@ import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
 import {WebGLPathTracer, PhysicalCamera, ShapedAreaLight, PhysicalSpotLight} from 'three-gpu-pathtracer';
 import {FACE, DEG, radiance, position, aim, cctToLinear, whiteBalanceGains, exposure} from './physics.js';
 import {aimedLights,CAMERAS} from './state.js';
+import {getExternalModel,disposeExternal} from './external-model.js';
+import {EXTERNAL_IDS} from './posing.js';
 import {createCharacter,createProp,disposeGenerated} from './characters.js';
 import {facePoint} from './posing.js';
 import {configureLight} from './scene-light.js';
@@ -175,13 +177,13 @@ export class StudioRenderer {
     this.state=state;const {camera:c,model:m,room:r,render:q}=state;
     if(kind==='display'){this.updateDisplay();this.dirty=true;return;}
     const serial=++this.applySerial;
-    if(isMMD(m.character)&&!this.characterCache.has(m.character)){
+    if((isMMD(m.character)||EXTERNAL_IDS.includes(m.character))&&m.object==='head'&&!this.characterCache.has(m.character)){
       this.loadingCharacter=true;this.callbacks.busy?.(true);
       const id=m.character;
       try{
-        if(!this.characterLoads.has(id))this.characterLoads.set(id,loadMMDCharacter(id,text=>this.callbacks.progress?.(text)));
+        if(!this.characterLoads.has(id))this.characterLoads.set(id,EXTERNAL_IDS.includes(id)?getExternalModel(id):loadMMDCharacter(id,text=>this.callbacks.progress?.(text)));
         const root=await this.characterLoads.get(id);
-        if(this.disposed){disposeMMDCharacter(root);return;}
+        if(this.disposed)return;
         this.characterCache.set(id,root);
       }catch(e){this.characterLoads.delete(id);if(serial!==this.applySerial)return;throw e;}
       finally{if(serial===this.applySerial){this.loadingCharacter=false;this.callbacks.busy?.(false);}}
@@ -192,8 +194,24 @@ export class StudioRenderer {
     aimedLights(state).forEach((item,i)=>configureLight(this.lights[i],this.spots[i],item));
     const signature=JSON.stringify(m);
     let geometryChanged=false;
-    if(this.characterSignature!==signature||!this.character){
-      if(this.character?.userData.mmd)this.character.removeFromParent();else disposeGenerated(this.character,[this.head?.geometry]);
+    const externalKind=EXTERNAL_IDS.includes(m.character)&&m.object==='head'?m.character:null;
+    if(externalKind){
+      const group=this.characterCache.get(externalKind);
+      group.userData.externalKind=externalKind;
+      const yaw=(group.userData.facingY||0)+(m.yaw+m.bodyYaw)*DEG;
+      if(this.character!==group){
+        if(this.character){
+          if(this.character.userData.externalKind||this.character.userData.mmd)this.character.removeFromParent();
+          else disposeGenerated(this.character,[this.head?.geometry]);
+        }
+        this.character=group;this.scene.add(group);this.characterSignature=signature;geometryChanged=true;
+      }else if(this.characterSignature!==signature){this.characterSignature=signature;geometryChanged=true;}
+      if(group.rotation.y!==yaw){group.rotation.y=yaw;geometryChanged=true;}
+    }else if(this.characterSignature!==signature||!this.character){
+      if(this.character){
+        if(this.character.userData.externalKind||this.character.userData.mmd)this.character.removeFromParent();
+        else disposeGenerated(this.character,[this.head?.geometry]);
+      }
       if(isMMD(m.character)){
         this.character=this.characterCache.get(m.character);poseMMDCharacter(this.character,m);
       }else{
@@ -320,7 +338,7 @@ export class StudioRenderer {
     if(!value&&this.ready)this.apply(this.state,'scene').catch(e=>this.callbacks.error?.(e));
   }
   jointPoints(detail='body'){
-    if(!this.character||this.state.model.object==='spheres')return [];
+    if(!this.character||this.state.model.object==='spheres'||this.character.userData.externalKind)return [];
     if(!this.character.userData.mmd)return [{id:'head',label:'头部',kind:'head',position:this.character.userData.head.getWorldPosition(new THREE.Vector3())}];
     const u=this.character.userData;
     return JOINTS.filter(j=>detail==='hands'?j.detail==='hands':!j.detail).flatMap(j=>{
@@ -336,7 +354,7 @@ export class StudioRenderer {
   dispose(){
     this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.pt.dispose();
     this.albedoTarget.dispose();this.basicMaterials.forEach(m=>m.dispose());this.basicMaterials.clear();
-    this.characterCache.forEach(disposeMMDCharacter);this.characterCache.clear();
+    this.characterCache.forEach(root=>{if(root.userData.mmd)disposeMMDCharacter(root);});disposeExternal();this.characterCache.clear();
     const geometries=new Set(),materials=new Set(),textures=new Set([this.skinMap,this.normalMap,this.envTexture]);
     for(const s of [this.scene,this.screenScene])s.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m));});
     geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t?.dispose());

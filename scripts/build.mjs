@@ -1,4 +1,4 @@
-import {build} from 'esbuild';
+﻿import {build} from 'esbuild';
 import {mkdir,rm,cp,copyFile,readFile,writeFile,readdir} from 'node:fs/promises';
 import {resolve} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -17,7 +17,10 @@ export async function buildApp(){
   if(externals.length)throw new Error('构建仍含外部模块，不能作为离线版本：'+externals.map(i=>i.path).join(', '));
   if(await exists(resolve(ROOT,'assets/LeePerrySmith/LeePerrySmith.glb')))await cp(resolve(ROOT,'assets/LeePerrySmith'),resolve(DIST,'models/LeePerrySmith'),{recursive:true});
   else console.warn('没有找到扫描素材；可以使用材质球。运行 npm run assets 后重新构建即可加入人脸。');
+  if(await exists(resolve(ROOT,'assets/VRoid/Sendagaya_Shino.vrm')))await cp(resolve(ROOT,'assets/VRoid'),resolve(DIST,'models/VRoid'),{recursive:true});
+  else console.warn('没有找到 VRoid CC0 示例人物，人物下拉将缺少该选项。');
   if(await exists(resolve(ROOT,'assets/MMD')))await cp(resolve(ROOT,'assets/MMD'),resolve(DIST,'models/MMD'),{recursive:true});
+  if(await exists(resolve(ROOT,'assets/custom')))await cp(resolve(ROOT,'assets/custom'),resolve(DIST,'models/custom'),{recursive:true});
   await mkdir(resolve(DIST,'licenses'),{recursive:true});
   await copyFile(resolve(ROOT,'LICENSE'),resolve(DIST,'licenses/Cos-Light-Studio-MIT.txt'));
   await copyFile(resolve(ROOT,'THIRD_PARTY_NOTICES.md'),resolve(DIST,'licenses/THIRD_PARTY_NOTICES.md'));

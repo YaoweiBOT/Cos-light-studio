@@ -70,7 +70,14 @@ export function pointToPoseTarget(model,key,point){
 }
 export const modelToWorld=(model,p)=>add(rotateBody(p,model.bodyYaw),{x:model.x||0,y:model.y||0,z:model.z||0});
 export const worldToModel=(model,p)=>rotateBody(sub(p,{x:model.x||0,y:model.y||0,z:model.z||0}),-model.bodyYaw);
-export const facePoint=model=>modelToWorld(model,rigPose(model).joints.head);
+// External humanoids (VRoid / user imports) are static figures measured at load
+// time; their measured face height replaces the procedural rig calculation.
+export const externalHeadY={vroid:null,custom:null};
+export const EXTERNAL_IDS=['vroid','custom'];
+export const facePoint=model=>{
+  if(EXTERNAL_IDS.includes(model.character)&&externalHeadY[model.character])return {x:model.x||0,y:externalHeadY[model.character]+(model.y||0),z:model.z||0};
+  return modelToWorld(model,rigPose(model).joints.head);
+};
 export function setPose(state,id){
   state.model.object='head';state.model.body=true;state.model.pose=posePreset(id,state.model.character);
   state.model.joints={};

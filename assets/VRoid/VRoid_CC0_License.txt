@@ -1,0 +1,8 @@
+CC0 1.0 Universal (Public Domain Dedication)
+
+VRoid Studio beta sample model "Sendagaya_Shino.vrm" is released under CC0 1.0
+by pixiv Inc. Copyright is waived; the model may be used, modified and
+redistributed freely.
+
+Official statement: https://vroid.pixiv.help/hc/en-us/articles/4402614652569
+License text: https://creativecommons.org/publicdomain/zero/1.0/
