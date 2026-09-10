@@ -3,7 +3,7 @@ import {clamp,meter,angularSize,frontalNormal,displayLightColor,beamDiameter,spo
 import {ElevationDiagram,PoseEditor} from './editors.js';
 import {posePreset,CHARACTERS,HAIRSTYLES,HAIR_COLORS,POSES,LIMBS,LABELS,setPose,frameSubject,facePoint,rigPose} from './posing.js';
 import {isMMD} from './character-catalog.js';
-import {EXTERNAL_CHARACTERS,probeCustom,importModelFile} from './external-model.js';
+import {EXTERNAL_CHARACTERS,probeCustom,importModelFile,getExternalModel,importedName} from './external-model.js';
 import {EXTERNAL_IDS} from './posing.js';
 import {LightingDiagram} from './diagram.js';
 import {download,safeFilename,makeSheet,blobDataURL,escapeHTML as esc} from './exports.js';
@@ -15,7 +15,16 @@ const $=id=>document.getElementById(id);
 const STORAGE='cos-light-studio:v1',SAVED='cos-light-studio:saved:v1';
 let state=defaults(),saved=[],engine=null,engineLoading=false,renderTimer=0,saveTimer=0,toastTimer=0,snapshot=null,compareVisible=false,firstFrame=false,assetReady=false;
 let pendingKind=null,viewportControls=null,renameID=null,customModelReady=false;
-probeCustom().then(available=>{customModelReady=available;if(available)renderSceneControls();}).catch(()=>{});
+const customLabel=()=>(importedName()?`${importedName()} · `:'')+'导入的模型';
+const characterLabel=id=>{
+  const ext=EXTERNAL_CHARACTERS.find(x=>x[0]===id);
+  if(ext)return ext[0]==='custom'?customLabel():ext[1];
+  return CHARACTERS.find(x=>x[0]===id)?.[1]||'人物';
+};
+probeCustom().then(async available=>{
+  customModelReady=available;
+  if(available){try{await getExternalModel('custom');}catch{/* 读取失败仍可重新导入 */}renderSceneControls();updateReadouts();}
+}).catch(()=>{});
 try{const raw=localStorage.getItem(STORAGE);if(raw)state=validateState(JSON.parse(raw));}catch{ /* A damaged autosave does not block opening the studio. */ }
 try{const raw=JSON.parse(localStorage.getItem(SAVED)||'[]');if(Array.isArray(raw))saved=raw.slice(0,30).flatMap(x=>{try{return x&&typeof x.id==='string'?[{...x,state:validateState(x.state)}]:[];}catch{return [];}});}catch{saved=[];}
 
@@ -109,12 +118,12 @@ function renderCameraControls(){
 function renderSceneControls(){
   const mmd=isMMD(state.model.character);
   const external=EXTERNAL_IDS.includes(state.model.character);
-  const characterOptions=CHARACTERS.concat(EXTERNAL_CHARACTERS.filter(([id])=>id==='vroid'||customModelReady));
+  const characterOptions=CHARACTERS.concat(EXTERNAL_CHARACTERS.filter(([id])=>id==='vroid'||customModelReady).map(([id,l])=>[id,id==='custom'?customLabel():l]));
   $('scene-controls').innerHTML=`
     ${select('拍摄对象','model.object',[['head','人物模型'],['spheres','灰球 / 白球 / 金属球']])}
     ${select('人物','model.character',characterOptions)}
     <button id="import-model" class="wide-button">导入模型包 · zip / pmx / vrm / glb</button>
-    <p class="control-hint">${mmd?'原装脸型、眼睛、头发与服装，使用你提供的 PMX 和贴图。点击画面下方切换头部、半身或全身取景。':external?'外部人物为静态站立模型：姿势节点编辑不生效；朝向、灯位、取景与测光正常。导入的模型只保存在此浏览器里，不会上传或提交。':'Lee 为男性扫描模型。'}</p>
+    <p class="control-hint">${mmd?'原装脸型、眼睛、头发与服装，使用你提供的 PMX 和贴图。点击画面下方切换头部、半身或全身取景。':external?`外部人物为静态站立模型：姿势节点编辑不生效；朝向、灯位、取景与测光正常。${customModelReady?'当前导入：'+customLabel()+'。':''}导入的模型只保存在此浏览器里，不会上传或提交。`:'Lee 为男性扫描模型。'}</p>
     ${mmd?'':'<p class="control-hint">只保留原始男性头部扫描，不再拼接自制身体、假发或衣服。需要全身请选已导入的 MMD。</p>'}
     ${mmd?'':'<div hidden>'}
     <div class="select-row"><label for="pose-preset">拍照姿势</label><select id="pose-preset"><option value="custom">自定义 / 当前</option>${POSES.map(([v,l])=>`<option value="${v}" ${state.model.pose.id===v?'selected':''}>${l}</option>`).join('')}</select></div>
@@ -182,7 +191,7 @@ function updateReadouts(){
   $('quality-select').value=state.render.quality;
   $('thirds-grid').hidden=!state.render.grid;$('grid-button').setAttribute('aria-pressed',String(state.render.grid));
   $('falsecolor-legend').hidden=state.render.diagnostic!=='falsecolor';
-  $('subject-label').textContent=state.model.object==='spheres'?'GRAY / WHITE / METAL · 物理参考':`${CHARACTERS.concat(EXTERNAL_CHARACTERS).find(x=>x[0]===state.model.character)?.[1]||'人物'} · ${state.model.body?'全身':'头部'}`;
+  $('subject-label').textContent=state.model.object==='spheres'?'GRAY / WHITE / METAL · 物理参考':`${characterLabel(state.model.character)} · ${state.model.body?'全身':'头部'}`;
   if(snapshot){const same=['aperture','shutter','iso','ev','wb','tint'].every(k=>snapshot.state.camera[k]===c[k]);$('compare-summary').textContent=same?'A / B 曝光与白平衡相同。':'注意：A / B 的曝光或白平衡不同。';}
   diagram.draw();elevation.draw();if(poseEditor)poseEditor.draw();
   viewportControls?.update();

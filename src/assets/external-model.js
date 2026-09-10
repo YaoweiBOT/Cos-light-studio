@@ -84,8 +84,10 @@ const idbGet=async()=>{
 };
 
 /* ---------- Imported model state (this session + persisted). ---------- */
-let imported=null,customAvailableFolder=false;
+let imported=null,customAvailableFolder=false,importedModelName=null;
 export const customImported=()=>!!imported;
+// 模型的可读名字：优先取 PMX 内部记录的模型名，其次导入文件名。
+export const importedName=()=>importedModelName;
 
 async function parseSingle(buffer){
   const loader=new GLTFLoader();
@@ -99,6 +101,8 @@ async function loadPMXSource(source){
   // MMDLoader, so parse directly with mmd-parser (MIT).
   const {default:MMDParser}=await import('mmd-parser');
   const pmx=new MMDParser.Parser().parsePmx(source.data,true);
+  const internalName=String(pmx.metadata?.modelName||'').trim().replace(/\.(pmx|zip)$/i,'');
+  if(internalName)importedModelName=internalName;
   
   const group=new THREE.Group();
   const textureLoader=new THREE.TextureLoader();

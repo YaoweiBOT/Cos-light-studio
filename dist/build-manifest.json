@@ -1,7 +1,7 @@
 {
   "application": "cos-light-studio",
   "version": "0.5.0",
-  "sourceDigest": "2a70f54e9c5bd857a8cb9f18a0d0a9f10d35dd04dbf52df9dcf64e0be5dc0d44",
+  "sourceDigest": "c32e60c9cd9c0bd5cdb42a5607174dc14c3a2f8727ec47432cfb83d15f82efe5",
   "bundled": true,
   "hasMMD": false,
   "externalImports": 0,
@@ -9,11 +9,11 @@
   "outputs": [
     "dist/assets/boot.js",
     "dist/assets/mmdparser-5B7AA3KJ.js",
-    "dist/assets/renderer-P5MRHJIL.js",
+    "dist/assets/renderer-C7V6J4PU.js",
     "dist/assets/chunk-UQLXH7HP.js",
-    "dist/assets/app-KNTE6H6S.js",
-    "dist/assets/chunk-FEJTMWYI.js.LEGAL.txt",
-    "dist/assets/chunk-FEJTMWYI.js",
+    "dist/assets/app-RCM7CCGE.js",
+    "dist/assets/chunk-ORGAJZAY.js.LEGAL.txt",
+    "dist/assets/chunk-ORGAJZAY.js",
     "dist/assets/chunk-OOJM4CTU.js"
   ]
 }
