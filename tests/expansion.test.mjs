@@ -1,3 +1,5 @@
+import {MMD_PROFILES} from '../src/assets/mmd-profiles.js';
+import {pointToPoseTarget} from '../src/assets/posing.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import * as T from 'three';
@@ -14,7 +16,7 @@ import {makeSheet} from '../src/assets/exports.js';
 const close=(a,b,tolerance=1e-7)=>assert.ok(Math.abs(a-b)<tolerance,`${a} versus ${b}`);
 
 test('all poses and unreachable goals preserve limb lengths with finite IK solutions',()=>{
-  for(const [id] of POSES){const m={...defaults().model,body:true,pose:posePreset(id)};
+  for(const [id] of POSES){const m={...defaults().model,character:'scan',body:true,pose:posePreset(id)};
     for(const extreme of [false,true]){
       if(extreme){m.pose.leftHand={x:9,y:9,z:9};m.pose.leftFoot={x:0,y:0,z:0};}
       for(const [key,chain] of Object.entries(rigPose(m).limbs)){
@@ -35,7 +37,8 @@ test('v1 plans migrate to the original scan; new complete seated scenes round-tr
 });
 test('seated face aim and full-body framing use the actual height',()=>{
   const s=defaults();setPose(s,'stool');frameSubject(s,'full');
-  close(facePoint(s.model).y,1.31);close(aim(aimedLights(s)[0]).y,1.31);assert.equal(s.prop.type,'stool');
+  const expected=1.62+.61-MMD_PROFILES[s.model.character].pelvis.y;
+  close(facePoint(s.model).y,expected);close(aim(aimedLights(s)[0]).y,expected);assert.equal(s.prop.type,'stool');
   const c=new T.PerspectiveCamera(35,2/3,.03,30);c.filmGauge=22.3;c.setFocalLength(s.camera.focal);c.position.set(0,s.camera.heightY,s.camera.distance);c.lookAt(0,s.camera.targetY,0);c.updateMatrixWorld();
   for(const height of [0,1.46]){const projected=new T.Vector3(0,height,0).project(c);assert.ok(Math.abs(projected.y)<1,'body must fit vertically');}
 });
@@ -59,17 +62,13 @@ test('spot uniform geometry and photometry match the meter including finite aper
   const p=position(item);close(sampled.x,p.x,.00001);close(sampled.y,p.y,.00001);close(sampled.z,p.z,.00001);
   close(d[7],spotIntensity(item),.001);assert.equal(area.intensity,0);assert.equal(spot.distance,0);assert.equal(spot.decay,2);data.tex.dispose();
 });
-test('every original head and hairstyle has finite shaded geometry and a BVH face hit',()=>{
-  for(const character of ['cute','fresh','elegant'])for(const [hair] of HAIRSTYLES){
-    const m={...defaults().model,character,hair};const root=createCharacter(m);root.updateMatrixWorld(true);const meshes=[];
-    root.traverseVisible(o=>{if(o.isMesh)meshes.push(o)});
-    for(const mesh of meshes)for(const key of ['position','normal'])assert.ok(mesh.geometry.attributes[key].array.every(Number.isFinite));
-    const gen=new StaticGeometryGenerator(meshes);gen.attributes=['position','normal'];const geo=gen.generate(),bvh=new MeshBVH(geo);
-    const hit=bvh.raycastFirst(new T.Ray(new T.Vector3(0,1.62,1),new T.Vector3(0,0,-1)),T.DoubleSide);assert.ok(hit);assert.ok(hit.distance<1);
-    disposeGenerated(root);geo.dispose();
-  }
+test('removed procedural people are not available even through direct API calls',()=>{
+  for(const character of ['cute','fresh','elegant'])assert.throws(()=>createCharacter({...defaults().model,character}),/旧自制人物已移除/);
+  const geometry=new T.SphereGeometry(.1),root=createCharacter({...defaults().model,character:'scan',body:true},geometry);
+  const meshes=[];root.traverse(o=>{if(o.isMesh)meshes.push(o);});assert.equal(meshes.length,1);assert.equal(meshes[0].geometry,geometry);
+  disposeGenerated(root,[geometry]);geometry.dispose();
 });
-test('props have the declared heights and white-room panels persist independently',()=>{
+test('props have declared heights and white-room panels persist independently',()=>{
   for(const [type,height] of [['ladder',.758],['stool',.53],['cube',.5]]){const prop=createProp({...defaults().prop,type});const b=new T.Box3().setFromObject(prop);close(b.max.y,height,.01);disposeGenerated(prop);}
   const s=presetState('white');assert.equal(s.room.boardSide,-1);assert.equal(s.room.board,'white');assert.equal(s.room.board2,'white');assert.equal(s.room.background,0);
   s.room.board2='black';assert.equal(validateState(s).room.board,'white');
@@ -80,5 +79,5 @@ test('diagram drags update height/depth and pose drags commit a reachable wrist'
   const s=defaults(),height=new ElevationDiagram(canvasStub(560,360),()=>s,()=>{},(id,values)=>Object.assign(s.lights.find(l=>l.id===id),values));
   height.drag='key';const {cx,base,scale}=height.transform();height.move({clientX:cx+scale*.8,clientY:base-scale*2.6});close(s.lights[0].heightY,2.6);close(position(s.lights[0]).z,.8,.015);
   s.model.body=true;const editor=new PoseEditor(canvasStub(560,650),()=>s,(key,p)=>s.model.pose[key]=p,()=>{});editor.drag='rightHand';editor.move({clientX:550,clientY:5});
-  const actual=rigPose(s.model).limbs.rightHand.end;close(actual.x,s.model.pose.rightHand.x);close(actual.y-s.model.pose.rootY,s.model.pose.rightHand.y);
+  const actual=rigPose(s.model).limbs.rightHand.end;const committed=pointToPoseTarget(s.model,'rightHand',actual);close(committed.x,s.model.pose.rightHand.x);close(committed.y,s.model.pose.rightHand.y);
 });

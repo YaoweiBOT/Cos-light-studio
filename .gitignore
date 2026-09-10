@@ -7,3 +7,14 @@ __pycache__/
 Thumbs.db
 .env
 .env.*
+
+# User-supplied characters: not licensed for redistribution.
+assets/MMD/
+dist/models/MMD/
+*.pmx
+*.pmd
+*.vmd
+cos-light-studio-personal-*.zip
+*仪玄*.zip
+*耀嘉音*.zip
+*维琳娜*.zip

@@ -7,6 +7,11 @@ import {createCharacter,createProp,disposeGenerated} from './characters.js';
 import {facePoint} from './posing.js';
 import {configureLight} from './scene-light.js';
 import {prepareHeadGeometry} from './geometry.js';
+import {isMMD} from './character-catalog.js';
+import {loadMMDCharacter,poseMMDCharacter,disposeMMDCharacter} from './mmd-character.js';
+import {preserveMaterialGroups} from './tracer-compat.js';
+import {JOINTS,boneForJoint} from './joints.js';
+import {cameraPosition} from './viewport-math.js';
 
 const ASSET_BASE=new URL('../models/LeePerrySmith/',import.meta.url);
 const colorLinear=(v)=>new THREE.Color().setRGB(v,v,v,THREE.LinearSRGBColorSpace);
@@ -33,6 +38,8 @@ vec3 falseColor(float y){
 void main(){
   vec3 raw=max(texture2D(source,vUv).rgb,vec3(0.))*wb*expGain;
   vec3 outColor=srgb(aces(raw));
+  if(mode==3)outColor=srgb(max(texture2D(source,vUv).rgb,vec3(0.)));
+  if(mode==4)outColor=srgb(aces(vec3(dot(raw,vec3(.2126,.7152,.0722)))));
   if(mode==1 && max(max(raw.r,raw.g),raw.b)>=1.) {
     float stripe=step(.5,fract((gl_FragCoord.x+gl_FragCoord.y)/12.));
     outColor=mix(outColor,mix(vec3(.9,.18,.35),vec3(.15,.04,.1),stripe),.85);
@@ -61,7 +68,12 @@ export class StudioRenderer {
   constructor(container,callbacks={}){
     this.container=container;this.callbacks=callbacks;this.paused=false;this.ready=false;this.disposed=false;
     this.frame=0;this.started=performance.now();this.lastStats=0;this.dirty=true;
-    this.renderer=new THREE.WebGLRenderer({antialias:false,alpha:false,preserveDrawingBuffer:true,powerPreference:'high-performance'});
+    this.characterCache=new Map();this.characterLoads=new Map();this.applySerial=0;this.loadingCharacter=false;
+    this.interacting=false;this.pendingFull=false;this.basicMaterials=new Map();
+    const canvas=document.createElement('canvas'),options={antialias:false,alpha:false,preserveDrawingBuffer:true,powerPreference:'high-performance'};
+    const context=canvas.getContext('webgl2',options);
+    if(!context)throw new Error('浏览器没有启用 WebGL 2。请在本机 Chrome / Edge 开启硬件加速，并更新显卡驱动后重试。');
+    this.renderer=new THREE.WebGLRenderer({canvas,context,...options});
     const gl=this.renderer.getContext();
     if(typeof WebGL2RenderingContext==='undefined'||!(gl instanceof WebGL2RenderingContext)||!gl.getExtension('EXT_color_buffer_float'))throw new Error('这台设备没有可用的 WebGL 2 浮点渲染。请在桌面版 Chrome / Edge 开启硬件加速后重试。');
     this.renderer.debug.onShaderError=()=>{this.shaderError=new Error('这台设备未能编译路径追踪着色器。请更新显卡驱动，在桌面 Chrome / Edge 中开启硬件加速后重试。');};
@@ -79,13 +91,16 @@ export class StudioRenderer {
     this.camera=new PhysicalCamera(35,2/3,.03,30);
     this.camera.position.set(0,FACE.y,1.65);this.camera.lookAt(0,FACE.y,0);
     this.pt=new WebGLPathTracer(this.renderer);
+    preserveMaterialGroups(this.pt._generator);
     this.pt.renderToCanvas=false;this.pt.rasterizeScene=false;this.pt.dynamicLowRes=false;
     this.pt.minSamples=1;this.pt.renderDelay=60;this.pt.fadeDuration=0;
-    this.pt.tiles.set(2,2);this.pt.textureSize.set(512,512);
+    this.pt.tiles.set(2,2);this.pt.textureSize.set(2048,2048);
     this.pt.filterGlossyFactor=.2;
+    this.pt.transmissiveBounces=24;
     this.screenScene=new THREE.Scene();this.screenCamera=new THREE.Camera();
     this.screenMaterial=new THREE.ShaderMaterial({vertexShader:vertex,fragmentShader:fragment,depthTest:false,depthWrite:false,toneMapped:false,uniforms:{source:{value:null},wb:{value:new THREE.Vector3(1,1,1)},expGain:{value:.045},mode:{value:0},imageSize:{value:new THREE.Vector2(1,1)}}});
     this.screenScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2,2),this.screenMaterial));
+    this.albedoTarget=new THREE.WebGLRenderTarget(1,1,{type:THREE.HalfFloatType});
     this.lights=['key','rim','top'].map(()=>{const l=new ShapedAreaLight(0xffffff,1,1,1);this.scene.add(l);return l;});
     this.spots=['key','rim','top'].map(()=>{const l=new PhysicalSpotLight();l.decay=2;l.distance=0;this.scene.add(l,l.target);return l;});
     this.buildRoom();this.buildObjects();
@@ -135,11 +150,17 @@ export class StudioRenderer {
       this.head=new THREE.Mesh(geo,this.headMat);this.pivot.add(this.head);
       this.callbacks.asset?.({scan:true,textures:false,triangles:Math.round((geo.index?.count||geo.attributes.position.count)/3)});
     }catch(e){
-      scanError=e;if(state.model.character==='scan')state.model.character='cute';this.callbacks.asset?.({scan:false,textures:false,error:e.message});
+      scanError=e;this.callbacks.asset?.({scan:false,textures:false,error:e.message});
     }
     this.callbacks.progress?.('正在准备光线追踪 · 首次着色器编译稍慢');
-    this.apply(state,'scene');this.ready=true;this.resize();this.pt.updateCamera();this.pt.reset();this.animate();
-    if(scanError)this.callbacks.notice?.('本地人脸扫描未能加载，已保留原创角色供练习。请检查素材文件后重试。');
+    try{await this.apply(state,'scene');}catch(e){
+      if(!e.missing||!this.head)throw e;
+      Object.assign(state.model,{character:'scan',material:'clay',hair:'none',body:false});
+      this.callbacks.model?.();this.callbacks.notice?.('本包未包含私有角色素材，已打开 Lee 扫描。按 README 加入自己的模型包后即可切换。');
+      await this.apply(state,'scene');
+    }
+    this.ready=true;this.resize();this.pt.updateCamera();this.pt.reset();this.animate();
+    if(scanError)this.callbacks.notice?.('Lee 扫描素材未加载；其他已导入的角色仍可正常使用。');
     else this.loadSkinTextures();
   }
   async loadSkinTextures(){
@@ -148,26 +169,48 @@ export class StudioRenderer {
     this.skinMap=res[0].status==='fulfilled'?res[0].value:null;
     this.normalMap=res[1].status==='fulfilled'?res[1].value:null;
     this.callbacks.asset?.({scan:!!this.head,textures:!!this.skinMap,partial:!this.normalMap});
-    if(this.state.model.material==='skin')this.apply(this.state,'materials');
+    if(this.state.model.character==='scan'&&this.state.model.material==='skin')this.apply(this.state,'materials').catch(e=>this.callbacks.error?.(e));
   }
-  apply(state,kind='lights'){
+  async apply(state,kind='lights'){
     this.state=state;const {camera:c,model:m,room:r,render:q}=state;
     if(kind==='display'){this.updateDisplay();this.dirty=true;return;}
+    const serial=++this.applySerial;
+    if(isMMD(m.character)&&!this.characterCache.has(m.character)){
+      this.loadingCharacter=true;this.callbacks.busy?.(true);
+      const id=m.character;
+      try{
+        if(!this.characterLoads.has(id))this.characterLoads.set(id,loadMMDCharacter(id,text=>this.callbacks.progress?.(text)));
+        const root=await this.characterLoads.get(id);
+        if(this.disposed){disposeMMDCharacter(root);return;}
+        this.characterCache.set(id,root);
+      }catch(e){this.characterLoads.delete(id);if(serial!==this.applySerial)return;throw e;}
+      finally{if(serial===this.applySerial){this.loadingCharacter=false;this.callbacks.busy?.(false);}}
+      if(serial!==this.applySerial)return;
+    }
+    this.loadingCharacter=false;
     const face=facePoint(m);
     aimedLights(state).forEach((item,i)=>configureLight(this.lights[i],this.spots[i],item));
     const signature=JSON.stringify(m);
     let geometryChanged=false;
     if(this.characterSignature!==signature||!this.character){
-      disposeGenerated(this.character,[this.head?.geometry]);
-      this.character=createCharacter(m,this.head?.geometry);this.scene.add(this.character);this.characterSignature=signature;geometryChanged=true;
+      if(this.character?.userData.mmd)this.character.removeFromParent();else disposeGenerated(this.character,[this.head?.geometry]);
+      if(isMMD(m.character)){
+        this.character=this.characterCache.get(m.character);poseMMDCharacter(this.character,m);
+      }else{
+        if(!this.head)throw new Error('Lee 扫描素材没有加载，请选择已导入的角色或恢复扫描素材。');
+        this.character=createCharacter(m,this.head.geometry);
+      }
+      this.scene.add(this.character);this.characterSignature=signature;geometryChanged=true;
     }
     const propSig=JSON.stringify(state.prop);
     if(propSig!==this.propSignature){disposeGenerated(this.prop);this.prop=createProp(state.prop);this.scene.add(this.prop);this.propSignature=propSig;geometryChanged=true;}
     this.pivot.visible=false;this.references.visible=m.object==='spheres';this.character.visible=!this.references.visible;
-    const charSkin=this.character.userData.skin,skin=m.character==='scan'&&m.material==='skin'&&this.skinMap;
-    charSkin.map=skin?this.skinMap:null;charSkin.normalMap=skin?this.normalMap:null;
-    if(skin)charSkin.color.copy(colorLinear(m.skinTone));
-    charSkin.normalScale.set(.65,.65);charSkin.needsUpdate=true;
+    const charSkin=this.character.userData.skin,skin=m.character==='scan'&&['skin','diffuse'].includes(m.material)&&this.skinMap;
+    if(charSkin){
+      charSkin.map=skin?this.skinMap:null;charSkin.normalMap=skin?this.normalMap:null;
+      if(skin)charSkin.color.copy(colorLinear(m.skinTone));
+      charSkin.normalScale.set(.65,.65);charSkin.needsUpdate=true;
+    }
     this.wallMat.color.copy(colorLinear(r.reflectance));this.floorMat.color.copy(colorLinear(r.floor));
     // A uniform background emits only when explicitly enabled by the user.
     this.scene.background.setRGB(r.background,r.background,r.background,THREE.LinearSRGBColorSpace);
@@ -189,7 +232,8 @@ export class StudioRenderer {
     this.board2Mat.metalness=r.board2==='silver'?1:0;this.board2Mat.roughness=r.board2==='silver'?.23:.95;
     this.board2.position.set(-r.boardSide*r.board2Distance,r.board2Height,.1);
     this.board2.rotation.y=-r.boardSide*r.board2Angle*DEG;this.board2.scale.set(1,r.board2Size,r.board2Width);
-    this.camera.position.set(0,c.heightY,c.distance);this.camera.lookAt(0,c.targetY,0);
+    const cp=cameraPosition(c);
+    this.camera.position.set(cp.x,cp.y,cp.z);this.camera.lookAt(c.x||0,c.targetY,0);
     this.camera.filmGauge=c.sensor==='apsc'?22.3:36;
     this.camera.setFocalLength(c.focal);
     this.camera.focusDistance=c.dof?c.focus:c.distance;
@@ -197,19 +241,21 @@ export class StudioRenderer {
     this.camera.updateProjectionMatrix();this.camera.updateMatrixWorld(true);
     this.pt.bounces=q.bounces;
     this.scene.updateMatrixWorld(true);
-    if(kind==='scene'||kind==='geometry'||geometryChanged)this.pt.setScene(this.scene,this.camera);
+    if(this.interacting||q.mode==='albedo'){this.pendingFull=true;}
+    else if(this.pendingFull||kind==='scene'||kind==='geometry'||geometryChanged){this.pt.setScene(this.scene,this.camera);this.pendingFull=false;}
     else if(kind==='camera')this.pt.updateCamera();
     else if(kind==='materials'){this.pt.updateMaterials();this.pt.updateEnvironment();}
     else this.pt.updateLights();
     this.pt.reset();this.started=performance.now();this.dirty=true;
     this.updateDisplay();
     if(this.quality!==q.quality){this.quality=q.quality;this.resize();}
+    this.callbacks.applied?.();
   }
   updateDisplay(){
     const c=this.state.camera;
     this.screenMaterial.uniforms.wb.value.set(...whiteBalanceGains(c.wb,c.tint));
     this.screenMaterial.uniforms.expGain.value=exposure(c);
-    this.screenMaterial.uniforms.mode.value={beauty:0,clip:1,falsecolor:2}[this.state.render.diagnostic]||0;
+    this.screenMaterial.uniforms.mode.value=this.interacting||this.state.render.mode==='albedo'?3:({beauty:0,clip:1,falsecolor:2,mono:4}[this.state.render.diagnostic]||0);
   }
   resize(){
     if(!this.state)return;
@@ -221,6 +267,7 @@ export class StudioRenderer {
     const size=this.renderer.getSize(new THREE.Vector2());
     if(size.x===width&&size.y===height)return;
     this.renderer.setSize(width,height,false);this.camera.aspect=width/height;
+    this.albedoTarget.setSize(width,height);
     this.camera.setFocalLength(this.state.camera.focal);this.camera.updateProjectionMatrix();
     if(this.ready){this.pt.updateCamera();this.pt.reset();}
     this.dirty=true;this.callbacks.resolution?.({width,height});
@@ -228,28 +275,68 @@ export class StudioRenderer {
   animate(){
     if(this.disposed)return;
     this.frame=requestAnimationFrame(()=>this.animate());
-    if(document.hidden||!this.ready)return;
+    if(document.hidden||!this.ready||this.loadingCharacter)return;
     try{
-      const shouldSample=!this.paused&&this.pt.samples<this.state.render.maxSamples;
+      const preview=this.interacting||this.state.render.mode==='albedo';
+      const shouldSample=!preview&&!this.paused&&this.pt.samples<this.state.render.maxSamples;
       if(shouldSample){this.pt.renderSample();if(this.shaderError)throw this.shaderError;this.dirty=true;}
       if(this.dirty&&this.pt.target){
-        this.screenMaterial.uniforms.source.value=this.pt.target.texture;
+        if(preview)this.renderAlbedo();
+        this.screenMaterial.uniforms.source.value=preview?this.albedoTarget.texture:this.pt.target.texture;
         this.renderer.setRenderTarget(null);this.renderer.render(this.screenScene,this.screenCamera);this.dirty=false;
       }
       const now=performance.now();
       if(now-this.lastStats>400){
-        this.callbacks.stats?.({samples:Math.floor(this.pt.samples),elapsed:(now-this.started)/1000,paused:this.paused,complete:this.pt.samples>=this.state.render.maxSamples});this.lastStats=now;
+        this.callbacks.stats?.({samples:preview?1:Math.floor(this.pt.samples),elapsed:(now-this.started)/1000,paused:this.paused,complete:!preview&&this.pt.samples>=this.state.render.maxSamples,preview,interacting:this.interacting});this.lastStats=now;
       }
     }catch(e){this.paused=true;this.ready=false;this.callbacks.error?.(e);}
+  }
+  renderAlbedo(){
+    const swapped=[],used=new Set(),background=this.scene.background;
+    try{
+      this.scene.background=new THREE.Color(.025,.025,.025);
+      this.scene.traverseVisible(object=>{
+        if(!object.isMesh)return;
+        const original=object.material;
+        const convert=mat=>{
+          used.add(mat);let basic=this.basicMaterials.get(mat);
+          if(!basic){basic=new THREE.MeshBasicMaterial();this.basicMaterials.set(mat,basic);}
+          const mapChanged=basic.map!==mat.map;
+          basic.color.copy(mat.color);basic.map=mat.map;basic.opacity=mat.opacity;basic.transparent=mat.transparent;
+          basic.side=mat.side;basic.alphaTest=mat.alphaTest;basic.depthWrite=mat.depthWrite;
+          if(mapChanged)basic.needsUpdate=true;return basic;
+        };
+        object.material=Array.isArray(original)?original.map(convert):convert(original);swapped.push([object,original]);
+      });
+      this.renderer.setRenderTarget(this.albedoTarget);this.renderer.render(this.scene,this.camera);
+    }finally{
+      for(const [object,material] of swapped)object.material=material;
+      this.scene.background=background;
+      for(const [material,basic] of this.basicMaterials)if(!used.has(material)){basic.dispose();this.basicMaterials.delete(material);}
+    }
+  }
+  setInteracting(value){
+    this.interacting=value;this.updateDisplay();this.dirty=true;
+    if(!value&&this.ready)this.apply(this.state,'scene').catch(e=>this.callbacks.error?.(e));
+  }
+  jointPoints(detail='body'){
+    if(!this.character||this.state.model.object==='spheres')return [];
+    if(!this.character.userData.mmd)return [{id:'head',label:'头部',kind:'head',position:this.character.userData.head.getWorldPosition(new THREE.Vector3())}];
+    const u=this.character.userData;
+    return JOINTS.filter(j=>detail==='hands'?j.detail==='hands':!j.detail).flatMap(j=>{
+      const bone=boneForJoint(u.byName,j);return bone?[{...j,position:bone.getWorldPosition(new THREE.Vector3())}]:[];
+    });
   }
   setPaused(value){this.paused=value;}
   reset(){this.pt.reset();this.started=performance.now();this.paused=false;this.dirty=true;}
   async capture(){
-    if(!this.ready||this.pt.samples<1)throw new Error('请等画面至少完成一次采样');
+    if(!this.ready||(this.state.render.mode!=='albedo'&&this.pt.samples<1))throw new Error('请等画面至少完成一次采样');
     return new Promise((resolve,reject)=>this.renderer.domElement.toBlob(blob=>blob?resolve(blob):reject(new Error('无法导出画面')),'image/png'));
   }
   dispose(){
     this.disposed=true;cancelAnimationFrame(this.frame);this.resizeObserver.disconnect();this.pt.dispose();
+    this.albedoTarget.dispose();this.basicMaterials.forEach(m=>m.dispose());this.basicMaterials.clear();
+    this.characterCache.forEach(disposeMMDCharacter);this.characterCache.clear();
     const geometries=new Set(),materials=new Set(),textures=new Set([this.skinMap,this.normalMap,this.envTexture]);
     for(const s of [this.scene,this.screenScene])s.traverse(o=>{if(o.geometry)geometries.add(o.geometry);if(o.material)(Array.isArray(o.material)?o.material:[o.material]).forEach(m=>materials.add(m));});
     geometries.forEach(g=>g.dispose());materials.forEach(m=>m.dispose());textures.forEach(t=>t?.dispose());

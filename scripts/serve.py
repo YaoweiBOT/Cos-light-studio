@@ -13,6 +13,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 DIST = ROOT / 'dist'
+try:
+    BUILD = json.loads((DIST / 'build-manifest.json').read_text(encoding='utf-8'))
+except (OSError, ValueError):
+    BUILD = {}
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -33,7 +37,7 @@ class Handler(SimpleHTTPRequestHandler):
     def send_head(self):
         if urllib.parse.urlsplit(self.path).path == '/__health':
             import io
-            data = json.dumps({'application': 'cos-light-studio', 'version': '0.2.0'}).encode()
+            data = json.dumps({'application': 'cos-light-studio', 'version': '0.5.0', 'build': BUILD.get('sourceDigest')}).encode()
             self.send_response(200)
             self.send_header('Content-Type', 'application/json')
             self.send_header('Content-Length', str(len(data)))
@@ -65,10 +69,12 @@ def main():
     opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
     try:
         with opener.open(url + '__health', timeout=0.6) as response:
-            running = json.load(response).get('application') == 'cos-light-studio'
+            running = json.load(response)
     except Exception:
-        running = False
-    if running:
+        running = None
+    if running and running.get('application') == 'cos-light-studio':
+        if running.get('version') != '0.5.0' or running.get('build') != BUILD.get('sourceDigest'):
+            sys.exit('An older/different studio is running. Close its startup window, then start this version. Avoid opening the old models.')
         print('Cos Light Studio is already running: ' + url)
         if not args.no_open:
             webbrowser.open(url)

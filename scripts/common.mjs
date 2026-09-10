@@ -14,9 +14,9 @@ export async function filesUnder(dir){
   }
   return out.sort();
 }
-export async function sourceDigest(){
+export async function sourceDigest({includeMMD=true}={}){
   const hash=createHash('sha256');
-  const files=[...await filesUnder(resolve(ROOT,'src')),...await filesUnder(resolve(ROOT,'assets'))];
+  const files=[...await filesUnder(resolve(ROOT,'src')),...await filesUnder(resolve(ROOT,'assets'))].filter(p=>includeMMD||!relative(ROOT,p).replaceAll('\\','/').startsWith('assets/MMD/'));
   for(const name of ['package.json','package-lock.json','scripts/build.mjs','LICENSE','THIRD_PARTY_NOTICES.md'])if(await exists(resolve(ROOT,name)))files.push(resolve(ROOT,name));
   for(const file of files.sort()){hash.update(relative(ROOT,file).replaceAll('\\','/'));hash.update(await readFile(file));}
   return hash.digest('hex');

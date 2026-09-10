@@ -1,6 +1,6 @@
 {
   "name": "cos-light-studio",
-  "version": "0.3.0",
+  "version": "0.5.0",
   "private": true,
   "type": "module",
   "license": "MIT",
@@ -14,15 +14,18 @@
     "assets": "node scripts/download-assets.mjs",
     "test": "node --test tests/*.test.mjs",
     "check": "node scripts/check.mjs",
-    "package": "node scripts/package.mjs"
+    "package": "node scripts/package.mjs",
+    "dev": "vite"
   },
   "dependencies": {
+    "mmd-parser": "1.0.4",
     "three": "0.181.1",
-    "three-mesh-bvh": "0.9.5",
     "three-gpu-pathtracer": "0.0.24",
+    "three-mesh-bvh": "0.9.5",
     "xatlas-web": "0.1.0"
   },
   "devDependencies": {
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "vite": "8.2.2"
   }
 }

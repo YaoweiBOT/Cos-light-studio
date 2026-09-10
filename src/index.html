@@ -24,10 +24,10 @@
 
 <main class="workspace">
   <aside class="left-panel" aria-label="布光方案与空间">
-    <div class="panel-heading"><span class="eyebrow">LIGHTING STUDIES</span><span class="small-badge">LOCAL 0.3</span></div>
+    <div class="panel-heading"><span class="eyebrow">LIGHTING STUDIES</span><span class="small-badge">LOCAL 0.5</span></div>
     <h1>让光的位置，<br>变得可见。</h1>
     <p class="intro">从一盏灯开始，观察人脸的每一处明暗。</p>
-    <div class="section-label"><span>布光起点</span><span class="muted">11 组</span></div>
+    <div class="section-label"><span>布光起点</span><span class="muted">12 组</span></div>
     <div id="preset-list" class="preset-list" role="group" aria-label="布光预设"></div>
     <section class="plan-section" aria-label="俯视灯位图">
       <div class="section-label"><span>灯位 · 俯视</span><span class="muted">拖动灯具</span></div>
@@ -45,8 +45,9 @@
       <div class="toolbar-actions"><button id="compare-button" class="quiet small" title="保存当前画面用于 A/B 对比"><span data-icon="compare"></span>A/B</button><button id="grid-button" class="icon-button" aria-label="切换三分网格" aria-pressed="false"><span data-icon="grid"></span></button><button id="fullscreen-button" class="icon-button" aria-label="放大摄影机画面"><span data-icon="expand"></span></button></div>
     </div>
     <div class="viewport" id="viewport">
-      <div class="render-frame" id="render-frame">
+      <div class="render-frame" id="render-frame" tabindex="0" role="group" aria-label="摄影机交互画面" aria-describedby="interaction-help">
         <div id="render-container"></div>
+        <div id="joint-overlay" hidden aria-label="姿态控制节点"></div>
         <div class="thirds-grid" id="thirds-grid" hidden aria-hidden="true"></div>
         <div class="compare-layer" id="compare-layer" hidden><img id="compare-image" alt="之前保存的 A 画面"><span class="compare-a">A · 已保存</span></div>
         <div class="compare-divider" id="compare-divider" hidden><span>↔</span></div>
@@ -71,6 +72,14 @@
     </div>
     <div class="study-note"><span class="note-number" id="note-number">01</span><div><h2 id="note-title">观察鼻影与颊影</h2><p id="note-text">45° 是起点。灯的高度、脸朝向与柔光箱尺寸，一起决定最后的光型。</p></div><button id="reset-button" class="quiet small" title="重置到当前布光预设"><span data-icon="reset"></span></button></div>
     <div class="framing-tools" role="group" aria-label="快速取景"><span>取景</span><button data-frame="head">头部</button><button data-frame="half">半身</button><button data-frame="full">全身</button><button id="open-pose-quick">编辑姿势</button></div>
+    <div class="quick-controls">
+      <label>人物<select id="model-quick" data-path="model.character" aria-label="快速切换人物"></select></label>
+      <label>表面<select id="surface-quick" data-path="model.material" aria-label="快速切换看光表面"></select></label>
+      <label>渲染<select id="render-mode" data-path="render.mode" aria-label="渲染方式"><option value="physical">物理布光 · 路径追踪</option><option value="albedo">原色检查 · 无光照</option></select></label>
+    </div>
+    <p class="interaction-help" id="interaction-help">点击画面后：滚轮调焦段 · W/S 升降 · A/D 横移 · Q/E 后退/前进 · 左拖转模特 · 右拖绕拍 · 中键拖平移相机 · Shift+左拖移模特 · F 适配取景。Shift+按键/滚轮精调，Ctrl+拖动精调。拖动预览不表示布光效果，松手后精算。</p>
+    <div class="node-toolbar"><button id="nodes-toggle" aria-pressed="false">关节节点</button><select id="nodes-detail" aria-label="关节层级"><option value="body">头 / 身体 / 四肢</option><option value="hands">手掌 / 手指精细层</option></select><select id="joint-select" aria-label="选择关节"><option value="">先打开关节节点</option></select></div>
+    <section id="joint-editor" hidden><div class="section-label"><span id="joint-title">关节</span><button id="joint-reset" class="text-button">重置此关节 / IK 姿势</button></div><div id="joint-controls"></div></section>
     <div class="lower-tools"><button id="snapshot-button" class="text-button"><span data-icon="plus"></span>记住这张 · 设为 A</button><span id="compare-summary" class="muted">同曝光比较，才看得清光的变化。</span><button id="hide-compare" class="text-button" hidden>收起对比</button></div>
   </section>
 
@@ -89,13 +98,14 @@
 </main>
 
 <dialog id="help-dialog" class="modal wide-modal"><div class="modal-heading"><div><span class="eyebrow">FIELD NOTES</span><h2>把虚拟灯位，变成现场直觉。</h2></div><button data-close class="icon-button" aria-label="关闭"><span data-icon="close"></span></button></div>
-  <div class="help-grid"><section><h3>第一次，花五分钟做这件事</h3><ol><li>选择「45° 面光」，先保留一盏主光。</li><li>把 60 cm 柔光箱换成 120 cm，观察鼻影边缘和额头高光。总功率不会跟着面积增加。</li><li>点击「设为 A」，再把灯移远。距离变化会同时影响亮度与柔度。</li><li>开轮廓光，用「单独看」检查耳缘、下颌和鼻尖是否溢光。</li><li>改变脸朝向。记住：相机的 45°，不等于脸的 45°。</li></ol><h3>新版人物与姿势</h3><p>场景面板可选三种成年女性风格化角色及男性扫描。发型、发色与全身显示独立。七种姿势可以继续拖动修改；坐三步梯／圆凳会同时放置对应道具。手动移动道具后，人物不会自动跟随。</p><h3>练菲涅尔</h3><p>选择「菲涅尔」预设，保持功率和位置不变，比较 15° 与 60°：光束变窄，中心照度上升、覆盖范围变小。改变出光口直径看投影软硬；调整光束边缘看照明边界。二者不相等。</p><p>采用有限出光口 + 平滑锥形配光。聚焦时保持理想远场总光通量，未追踪菲涅尔镜片、反射器、真实高斯配光或厂商效率变化。灯光本身在空气中不可见，观察的是物体和背景上的光斑。<a href="https://www.arri.com/en/lighting/led-spotlights/orbiter/accessories/optics/fresnel-lens" target="_blank" rel="noreferrer">ARRI 官方菲涅尔说明</a></p><h3>这里的「功率」怎么理解</h3><p>每档 EV 让总光通量翻倍。0 EV 对应内部 1000 lm 的参考光源，用来比较关系。它没有标定成 AD200Pro 的 Ws 或 1/16 档位。</p><p>所有灯采用稳态连续发光模型；快门影响画面亮度。闪光同步时的快门规律、TTL、HSS 与闪光持续时间不在此版内。</p></section>
-  <section><h3>已在计算什么</h3><p>三维扫描人脸；矩形或圆形发光面；光源与表面的方向余弦；光程衰减；遮挡；软阴影；GGX 表面反射；黑棚墙地面和板材的多次反弹。每次采样重新追踪路径，不使用生成图片或预烘焙阴影。</p><h3>还不能当成什么</h3><p>皮肤目前是表面反射模型，没有完整次表面散射。扫描纹理可能残留采集时的明暗；观察光型优先用「中性雕塑」。原创女性角色含独立眼球表面、实体发束和简化服装；尚无精细毛发散射或真实妆面，也没有你的真实灯具配光、柔光布透射或深口箱内部结构。</p><p>圆形柔光箱是均匀发光圆盘，不能完全代替八角箱。色温/色调采用 RGB 近似，无法复现不同 LED 光谱对服装和肤色的影响。曝光、色调映射与高光指示不是 R7 的 RAW 标定。</p><h3>如何看测光与高光</h3><p>右侧测光是在面部中心放一片朝脸正面的虚拟测光片，积分直射光，单位为参考 lx。它不计鼻子遮挡和反射补光；最终画面包含这些效应。高光条纹表示显示前某个线性通道 ≥ 1，是比较阈值，不是相机饱和证明。</p></section></div>
-  <div class="help-footer"><p>人脸：Lee Perry-Smith / Infinite Realities，经 Three.js 示例分发，CC BY 3.0；尺寸和材质在运行时调整。<a href="https://github.com/mrdoob/three.js/blob/r170/examples/models/gltf/LeePerrySmith/LeePerrySmith_License.txt" target="_blank" rel="noreferrer">原始素材许可</a> · <a href="./models/LeePerrySmith/LeePerrySmith_License.txt" target="_blank">本地许可</a> · 引擎：<a href="https://github.com/gkjohnson/three-gpu-pathtracer" target="_blank" rel="noreferrer">three-gpu-pathtracer</a> / <a href="https://threejs.org/" target="_blank" rel="noreferrer">Three.js</a></p><p>本地版无需登录或联网。方案保存在当前浏览器，也可导出 JSON 带走；固定使用同一个本地端口。快捷键：1 / 2 / 3 选灯，S 单独看，空格暂停采样。</p></div>
+  <div class="help-grid"><section><h3>第一次，花五分钟做这件事</h3><ol><li>选择「45° 面光」，先保留一盏主光。</li><li>把 60 cm 柔光箱换成 120 cm，观察鼻影边缘和额头高光。总功率不会跟着面积增加。</li><li>点击「设为 A」，再把灯移远。距离变化会同时影响亮度与柔度。</li><li>开轮廓光，用「单独看」检查耳缘、下颌和鼻尖是否溢光。</li><li>改变脸朝向。记住：相机的 45°，不等于脸的 45°。</li></ol><h3>新版人物与姿势</h3><p>仅保留原始男性头部扫描与你本地导入的三个 MMD。切模型保留相机与布光；按 F 或头部／半身／全身按钮主动重新取景。MMD 可通过关节节点和手指精细层摆姿，先做手脚 IK 再精调关节。坐姿自动放对应道具；手动移动道具后人物不会自动跟随。</p><h3>练菲涅尔</h3><p>选择「菲涅尔」预设，保持功率和位置不变，比较 15° 与 60°：光束变窄，中心照度上升、覆盖范围变小。改变出光口直径看投影软硬；调整光束边缘看照明边界。二者不相等。</p><p>采用有限出光口 + 平滑锥形配光。聚焦时保持理想远场总光通量，未追踪菲涅尔镜片、反射器、真实高斯配光或厂商效率变化。灯光本身在空气中不可见，观察的是物体和背景上的光斑。<a href="https://www.arri.com/en/lighting/led-spotlights/orbiter/accessories/optics/fresnel-lens" target="_blank" rel="noreferrer">ARRI 官方菲涅尔说明</a></p><h3>这里的「功率」怎么理解</h3><p>每档 EV 让总光通量翻倍。0 EV 对应内部 1000 lm 的参考光源，用来比较关系。它没有标定成 AD200Pro 的 Ws 或 1/16 档位。</p><p>所有灯采用稳态连续发光模型；快门影响画面亮度。闪光同步时的快门规律、TTL、HSS 与闪光持续时间不在此版内。</p></section>
+  <section><h3>已在计算什么</h3><p>三维扫描人脸；矩形或圆形发光面；光源与表面的方向余弦；光程衰减；遮挡；软阴影；GGX 表面反射；黑棚墙地面和板材的多次反弹。每次采样重新追踪路径，不使用生成图片或预烘焙阴影。</p><h3>还不能当成什么</h3><p>皮肤目前是表面反射模型，没有完整次表面散射。扫描纹理可能残留采集时的明暗；观察光型优先用「中性雕塑」。三个 MMD 角色使用原始网格、贴图与骨骼；贴图可能含美术绘制的明暗，不等于真实皮肤。材质转换保留配色，未复现 MMD 的 Toon/SPA 高光；尚无精细毛发散射、裙摆碰撞或真实妆面，也没有你的真实灯具配光、柔光布透射或深口箱内部结构。</p><p>圆形柔光箱是均匀发光圆盘，不能完全代替八角箱。色温/色调采用 RGB 近似，无法复现不同 LED 光谱对服装和肤色的影响。曝光、色调映射与高光指示不是 R7 的 RAW 标定。</p><h3>如何看测光与高光</h3><p>右侧测光是在面部中心放一片朝脸正面的虚拟测光片，积分直射光，单位为参考 lx。它不计鼻子遮挡和反射补光；最终画面包含这些效应。高光条纹表示显示前某个线性通道 ≥ 1，是比较阈值，不是相机饱和证明。</p></section></div>
+  <div class="help-footer"><p>人脸：Lee Perry-Smith / Infinite Realities，经 Three.js 示例分发，CC BY 3.0；尺寸和材质在运行时调整。<a href="https://github.com/mrdoob/three.js/blob/r170/examples/models/gltf/LeePerrySmith/LeePerrySmith_License.txt" target="_blank" rel="noreferrer">原始素材许可</a> · <a href="./models/LeePerrySmith/LeePerrySmith_License.txt" target="_blank">本地许可</a> · 引擎：<a href="https://github.com/gkjohnson/three-gpu-pathtracer" target="_blank" rel="noreferrer">three-gpu-pathtracer</a> / <a href="https://threejs.org/" target="_blank" rel="noreferrer">Three.js</a></p><p>本地版无需登录或联网。方案保存在当前浏览器，也可导出 JSON 带走；固定使用同一个本地端口。快捷键：1 / 2 / 3 选灯，L 单独看，空格暂停采样。画面操作见摄影机下方的按键说明；原色检查不代表照明效果。</p></div>
 </dialog>
 <dialog id="export-dialog" class="modal"><div class="modal-heading"><div><span class="eyebrow">TAKE IT WITH YOU</span><h2>保存这次练习</h2></div><button data-close class="icon-button" aria-label="关闭"><span data-icon="close"></span></button></div><button id="export-png" class="export-option"><span data-icon="image"></span><span><strong>摄影机画面 · PNG</strong><small>导出当前采样结果与显示模式</small></span><span>↗</span></button><button id="export-json" class="export-option"><span data-icon="code"></span><span><strong>完整布光方案 · JSON</strong><small>保留全部灯位、相机和场景数值，可重新导入</small></span><span>↗</span></button><button id="export-sheet" class="export-option"><span data-icon="book"></span><span><strong>现场参考卡 · HTML</strong><small>灯位图、设置表和笔记，可浏览器打印为 PDF</small></span><span>↗</span></button><label class="notes-label" for="study-notes">给下次拍摄的笔记</label><textarea id="study-notes" placeholder="例如：轮廓光再往后挪，别打亮鼻尖……" maxlength="4000"></textarea></dialog>
 <dialog id="pose-dialog" class="modal wide-modal"><div class="modal-heading"><div><span class="eyebrow">POSE WORKSHOP</span><h2>摆一个自己的姿势</h2></div><button data-close class="icon-button" aria-label="关闭"><span data-icon="close"></span></button></div><div class="pose-workspace"><div><div class="pose-view-buttons"><button id="pose-front" aria-pressed="true">人物正面</button><button id="pose-side" aria-pressed="false">人物侧面</button></div><canvas id="pose-canvas" width="560" height="650" aria-label="拖动手腕和脚踝，自定义人物姿势"></canvas></div><div><p class="control-hint">手腕／脚踝控制两段肢体，肘膝自动弯曲。切到侧面调前后，或输入坐标；骨架图跟随身体自身方向。</p><div id="pose-controls"></div><p class="control-hint">姿势自动保存。此版不做碰撞约束；手与身体、裙摆、道具的穿插需要手动避开。</p><button id="pose-done" class="primary">回到摄影机画面</button></div></div></dialog>
 <input type="file" id="import-file" accept="application/json,.json" hidden>
+<dialog id="rename-dialog" class="modal"><form id="rename-form"><h2>重命名已保存方案</h2><label for="rename-input">方案名称</label><input id="rename-input" maxlength="80" required><div class="rename-actions"><button type="button" data-close class="quiet">取消</button><button type="submit" class="primary">保存名称</button></div></form></dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <noscript><div class="noscript">请启用 JavaScript 以运行三维布光室。</div></noscript>
 </body>

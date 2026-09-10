@@ -1,16 +1,20 @@
-import {defaults,clone,validateState,PRESETS,MODIFIERS,presetState,aimedLights} from './state.js';
+import {defaults,clone,validateState,PRESETS,MODIFIERS,presetState,aimedLights,switchCharacter,renameStudy} from './state.js';
 import {clamp,meter,angularSize,frontalNormal,displayLightColor,beamDiameter,spotIntensity} from './physics.js';
 import {ElevationDiagram,PoseEditor} from './editors.js';
-import {CHARACTERS,HAIRSTYLES,HAIR_COLORS,POSES,LIMBS,LABELS,setPose,frameSubject,facePoint,rigPose} from './posing.js';
+import {posePreset,CHARACTERS,HAIRSTYLES,HAIR_COLORS,POSES,LIMBS,LABELS,setPose,frameSubject,facePoint,rigPose} from './posing.js';
+import {isMMD} from './character-catalog.js';
 import {LightingDiagram} from './diagram.js';
 import {download,safeFilename,makeSheet,blobDataURL,escapeHTML as esc} from './exports.js';
+import {SURFACES} from './surfaces.js';
+import {ViewportControls} from './viewport-controls.js';
+import {jointById} from './joints.js';
 
 const $=id=>document.getElementById(id);
 const STORAGE='cos-light-studio:v1',SAVED='cos-light-studio:saved:v1';
 let state=defaults(),saved=[],engine=null,engineLoading=false,renderTimer=0,saveTimer=0,toastTimer=0,snapshot=null,compareVisible=false,firstFrame=false,assetReady=false;
-let pendingKind=null;
+let pendingKind=null,viewportControls=null,renameID=null;
 try{const raw=localStorage.getItem(STORAGE);if(raw)state=validateState(JSON.parse(raw));}catch{ /* A damaged autosave does not block opening the studio. */ }
-try{const raw=JSON.parse(localStorage.getItem(SAVED)||'[]');if(Array.isArray(raw))saved=raw.slice(0,30).filter(x=>x&&typeof x.id==='string').map(x=>({...x,state:validateState(x.state)}));}catch{saved=[];}
+try{const raw=JSON.parse(localStorage.getItem(SAVED)||'[]');if(Array.isArray(raw))saved=raw.slice(0,30).flatMap(x=>{try{return x&&typeof x.id==='string'?[{...x,state:validateState(x.state)}]:[];}catch{return [];}});}catch{saved=[];}
 
 const paths={
  camera:'<rect x="3" y="6" width="18" height="14" rx="2"/><path d="M8 6l2-3h4l2 3"/><circle cx="12" cy="13" r="4"/>',
@@ -77,6 +81,7 @@ function renderCameraControls(){
     ${select('画幅','camera.frame',[['portrait','竖幅 · 2:3'],['square','方形 · 1:1'],['landscape','横幅 · 3:2']])}
     ${range('焦距','camera.focal',18,120,1,'mm')}${range('相机前后距离','camera.distance',.5,6,.01,'m')}
     ${range('相机高度','camera.heightY',.2,3,.01,'m')}${range('取景中心高度','camera.targetY',.1,2.5,.01,'m')}${section('固定曝光 / EXPOSURE')}
+    ${range('相机横移','camera.x',-2,2,.01,'m')}${range('相机绕拍角度','camera.azimuth',-180,180,1,'°')}
     ${range('光圈','camera.aperture',1.4,16,.1,'f')}
     ${range('快门 · 1 /','camera.shutter',15,1000,1,'s')}
     ${range('感光度','camera.iso',50,3200,50,'ISO')}
@@ -88,23 +93,26 @@ function renderCameraControls(){
     ${toggle('启用物理景深','camera.dof')}${range('对焦距离','camera.focus',.4,6,.01,'m')}
     <p class="control-hint">练习光型时建议关闭景深。开启后，光圈也会改变焦外模糊。</p>
     ${section('显示辅助 / DISPLAY')}
-    ${select('显示模式','render.diagnostic',[['beauty','正常画面 · ACES'],['clip','高光阈值条纹'],['falsecolor','线性亮度伪色']])}
+    ${select('显示模式','render.diagnostic',[['beauty','正常画面 · ACES'],['mono','黑白亮度 · 看明暗'],['clip','高光阈值条纹'],['falsecolor','线性亮度伪色']])}
     <p class="control-hint">条纹表示显示前任一线性通道 ≥ 1；不代表 R7 RAW 真实溢出。</p>`;
 }
 function renderSceneControls(){
+  const mmd=isMMD(state.model.character);
   $('scene-controls').innerHTML=`
     ${select('拍摄对象','model.object',[['head','人物模型'],['spheres','灰球 / 白球 / 金属球']])}
     ${select('人物','model.character',CHARACTERS)}
-    <p class="control-hint">三种原创成年女性风格化模型；Lee 为男性扫描。脸型不同会改变鼻影、颊影和眼窝。</p>
-    ${select('COS 发型','model.hair',HAIRSTYLES)}${select('假发颜色','model.hairColor',HAIR_COLORS)}
-    ${toggle('显示全身','model.body')}${select('服装','model.clothing',[['uniform','衬衫 + 百褶裙'],['dress','连衣裙'],['suit','长裤套装']])}
+    <p class="control-hint">${mmd?'原装脸型、眼睛、头发与服装，使用你提供的 PMX 和贴图。点击画面下方切换头部、半身或全身取景。':'Lee 为男性扫描模型。'}</p>
+    ${mmd?'':'<p class="control-hint">只保留原始男性头部扫描，不再拼接自制身体、假发或衣服。需要全身请选已导入的 MMD。</p>'}
+    ${mmd?'':'<div hidden>'}
     <div class="select-row"><label for="pose-preset">拍照姿势</label><select id="pose-preset"><option value="custom">自定义 / 当前</option>${POSES.map(([v,l])=>`<option value="${v}" ${state.model.pose.id===v?'selected':''}>${l}</option>`).join('')}</select></div>
     <button id="open-pose" class="wide-button">拖动手脚 · 自定义姿势</button>
+    ${mmd?'':'</div>'}
     ${range('身体整体朝向','model.bodyYaw',-180,180,1,'°')}
-    ${select('表面','model.material',[['clay','中性雕塑 · 看光型'],['skin','肤色 · 表面反射'],['gray','18% 灰 · 曝光参考']])}
-    <p class="control-hint">扫描肤色未含完整皮下散射；观察光型优先使用中性雕塑。</p>
+    ${select('表面','model.material',SURFACES)}
+    ${range('人物左右','model.x',-2,2,.01,'m')}${range('人物前后','model.z',-2,2,.01,'m')}${range('人物升降','model.y',-.4,1,.01,'m')}
+    <p class="control-hint">18% 灰为线性反射率 0.18、无镜面高光，保留透明贴图轮廓。原色模式保留美术贴图，不复现 MMD Toon/SPA。大幅度摆姿仍可能穿插。</p>
     ${range('脸朝向','model.yaw',-90,90,1,'°')}${range('低头 / 抬头','model.pitch',-35,35,1,'°')}
-    ${range('表面粗糙度','model.roughness',.15,.9,.01,'')}${range('肤色反射倍率','model.skinTone',.4,1,.05,'×')}
+    ${mmd?'':range('表面粗糙度','model.roughness',.15,.9,.01,'')+range('肤色反射倍率','model.skinTone',.4,1,.05,'×')}
     ${section('道具 / PROPS')}
     ${select('道具','prop.type',[['off','不放道具'],['ladder','三步人字梯 · 最高踏面 72 cm'],['stool','圆凳 · 座面 53 cm'],['cube','50 cm 方箱']])}
     ${range('道具左右','prop.x',-2,2,.01,'m')}${range('道具前后','prop.z',-2,2,.01,'m')}${range('道具朝向','prop.yaw',-180,180,1,'°')}
@@ -144,7 +152,7 @@ function renderPresets(){
   const p=PRESETS.find(p=>p.id===state.preset)||PRESETS[0];$('note-number').textContent=p.tag.slice(0,2);$('note-title').textContent=p.tag.split(' / ')[1];$('note-text').textContent=p.desc;
 }
 function renderSaved(){
-  $('saved-list').innerHTML=saved.length?saved.map(x=>`<div class="saved-row"><button data-load="${esc(x.id)}"><strong>${esc(x.state.name)}</strong><small>${new Date(x.date).toLocaleDateString('zh-CN')} · ${x.state.lights.filter(l=>l.enabled).length} 盏灯</small></button><button data-delete="${esc(x.id)}" class="icon-button" aria-label="删除 ${esc(x.state.name)}">${icon('trash')}</button></div>`).join(''):'<p class="empty-note">保存一个灯位，下次接着练。</p>';
+  $('saved-list').innerHTML=saved.length?saved.map(x=>`<div class="saved-row"><button data-load="${esc(x.id)}"><strong>${esc(x.state.name)}</strong><small>${new Date(x.date).toLocaleDateString('zh-CN')} · ${x.state.lights.filter(l=>l.enabled).length} 盏灯</small></button><button data-rename="${esc(x.id)}" class="icon-button" aria-label="重命名 ${esc(x.state.name)}" title="重命名">✎</button><button data-delete="${esc(x.id)}" class="icon-button" aria-label="删除 ${esc(x.state.name)}">${icon('trash')}</button></div>`).join(''):'<p class="empty-note">保存一个灯位，下次接着练。</p>';
 }
 function updateReadouts(){
   const c=state.camera,l=aimedLights(state).find(x=>x.id===state.selected),a=angularSize(l);
@@ -160,6 +168,10 @@ function updateReadouts(){
   $('subject-label').textContent=state.model.object==='spheres'?'GRAY / WHITE / METAL · 物理参考':`${CHARACTERS.find(x=>x[0]===state.model.character)?.[1]||'人物'} · ${state.model.body?'全身':'头部'}`;
   if(snapshot){const same=['aperture','shutter','iso','ev','wb','tint'].every(k=>snapshot.state.camera[k]===c[k]);$('compare-summary').textContent=same?'A / B 曝光与白平衡相同。':'注意：A / B 的曝光或白平衡不同。';}
   diagram.draw();elevation.draw();if(poseEditor)poseEditor.draw();
+  viewportControls?.update();
+  for(const path of ['model.character','model.material','render.mode'])syncPath(path,valueAt(path));
+  $('open-pose-quick').hidden=!isMMD(state.model.character);
+  $('falsecolor-legend').hidden=state.render.mode==='albedo'||state.render.diagnostic!=='falsecolor';
 }
 function resizeFrame(){
   const viewport=$('viewport'),frame=$('render-frame'),aspect={portrait:2/3,square:1,landscape:1.5}[state.camera.frame];
@@ -178,8 +190,8 @@ function changed(kind){
   renderTimer=setTimeout(()=>{
     renderTimer=0;
     const next=pendingKind;pendingKind=null;
-    if(engine?.ready)try{engine.apply(state,next);}catch(e){showError(e);}
-  },kind==='display'?16:90);
+    if(engine?.ready)engine.apply(state,next).catch(showError);
+  },kind==='display'?16:engine?.interacting?35:90);
 }
 function selectLight(id){state.selected=id;renderLightControls();persist();}
 function applyPreset(id){state=presetState(id,state);syncAll();changed('scene');}
@@ -214,11 +226,12 @@ function handleControl(e){
     kind='geometry';
     if(path.startsWith('model.pose.')){state.model.pose.id='custom';if(poseEditor)poseEditor.draw();}
     if(key==='body'){frameSubject(state,val?'full':'head');renderCameraControls();}
-    if(key==='character')state.model.object='head';
-    if(key==='character'&&val==='scan'){state.model.hair='none';renderSceneControls();}
-    if(key==='character'&&val!=='scan'&&state.model.hair==='none'){state.model.hair='bob';renderSceneControls();}
+    if(key==='character'){
+      switchCharacter(state,val);
+      viewportControls?.select(null);renderSceneControls();
+      toast('已切换模型；灯光、相机、曝光和看光方式保持不变。需要重新取景请按 F。');
+    }
     if(key==='material'&&val==='skin'&&state.model.character==='scan'&&!engine?.skinMap)toast('扫描肤色纹理还未就绪，暂用中性表面。');
-    if(key==='character'&&val==='scan'&&!assetReady)toast('扫描人脸未就绪，暂显示原创头部。可在场景面板重试加载。');
   }else if(scope==='room')kind=['reflectance','floor','background'].includes(key)?'materials':'geometry';
   else if(scope==='prop')kind='geometry';
   else if(scope==='render')kind=key==='diagnostic'?'display':'scene';
@@ -226,7 +239,7 @@ function handleControl(e){
 }
 function showError(error){
   $('loading-overlay').hidden=true;$('error-overlay').hidden=false;$('error-detail').textContent=error?.message||String(error);
-  $('render-badge').innerHTML='<i></i>渲染未就绪';engine?.setPaused(true);
+  $('render-badge').innerHTML='<i></i>渲染未就绪';if(engine){engine.failed=true;engine.setPaused(true);}
 }
 async function startEngine(){
   if(engineLoading)return;engineLoading=true;
@@ -238,19 +251,25 @@ async function startEngine(){
     clearTimeout(timeout);engine?.dispose();firstFrame=false;
     engine=new mod.StudioRenderer($('render-container'),{
       progress:text=>$('loading-detail').textContent=text,
+      busy:value=>{if(value){firstFrame=false;$('loading-overlay').hidden=false;$('error-overlay').hidden=true;}},
       error:showError,notice:toast,
-      asset:info=>{assetReady=info.scan;$('retry-model').hidden=info.scan;if(!info.scan){if(state.model.character==='scan')state.model.character='cute';renderSceneControls();$('retry-model').hidden=false;updateReadouts();}},
+      applied:()=>{viewportControls?.update();refreshJointList();if(engine?.failed){engine.failed=false;engine.setPaused(false);firstFrame=false;$('error-overlay').hidden=true;}},
+      asset:info=>{assetReady=info.scan;$('retry-model').hidden=info.scan;},
+      model:()=>{renderSceneControls();renderCameraControls();updateReadouts();},
       resolution:({width,height})=>$('render-resolution').textContent=`${width} × ${height}`,
-      stats:({samples,elapsed,paused,complete})=>{
+      stats:({samples,elapsed,paused,complete,preview,interacting})=>{
         if(samples>=1&&!firstFrame){firstFrame=true;$('loading-overlay').hidden=true;}
         $('render-stats').textContent=`${samples} / ${state.render.maxSamples} samples · ${elapsed<60?`${elapsed.toFixed(0)} s`:`${Math.floor(elapsed/60)} min`}`;
         $('render-badge').innerHTML=`<i></i>${paused?'已暂停':complete?'采样完成':'路径追踪中'}`;
         $('pause-button').innerHTML=`${icon(paused?'play':'pause')}${paused?'继续':complete?'重采样':'暂停'}`;
+        if(preview){$('render-stats').textContent=interacting?'交互原色预览 · 松手后恢复精算':'原色检查 · 不受灯光、曝光和白平衡影响';$('render-badge').textContent='原色检查（非布光）';}
+        $('pause-button').disabled=!!preview;
       }
     });
     await engine.init(state);
+    viewportControls?.update();
     // A preset can be changed while the scan is downloading.
-    if(engine.state!==state)engine.apply(state,'scene');
+    if(engine.state!==state)await engine.apply(state,'scene');
   }catch(e){clearTimeout(timeout);showError(e);}finally{engineLoading=false;}
 }
 
@@ -277,17 +296,55 @@ const elevation=new ElevationDiagram($('elevation-canvas'),()=>state,selectLight
 const poseEditor=new PoseEditor($('pose-canvas'),()=>state,(limb,point)=>{state.model.pose[limb]=point;state.model.pose.id='custom';for(const [axis,v] of Object.entries(point))syncPath(`model.pose.${limb}.${axis}`,v);changed('geometry');},()=>renderPoseControls());
 function renderPoseControls(){
   const key=poseEditor.selected;
-  $('pose-controls').innerHTML=`<div class="select-row"><label for="pose-limb">调整部位</label><select id="pose-limb">${LIMBS.map(k=>`<option value="${k}" ${key===k?'selected':''}>${LABELS[k]}</option>`).join('')}</select></div>${range('骨盆高度','model.pose.rootY',.35,1.2,.01,'m')}${range('左右位置','model.pose.'+key+'.x',-.9,.9,.01,'m')}${range('相对骨盆高度','model.pose.'+key+'.y',-1.2,1.2,.01,'m')}${range('前后位置','model.pose.'+key+'.z',-.9,.9,.01,'m')}${range('肘部弯曲方向','model.pose.armBend',-1,1,.1,'')}${range('膝部弯曲方向','model.pose.kneeBend',-1,1,.1,'')}<p class="control-hint">手脚坐标相对于骨盆。目标超出可达距离时，肢体停在最大伸展位置。</p>`;
+  $('pose-controls').innerHTML=`<div class="select-row"><label for="pose-limb">调整部位</label><select id="pose-limb">${LIMBS.map(k=>`<option value="${k}" ${key===k?'selected':''}>${LABELS[k]}</option>`).join('')}</select></div>${range('骨盆高度','model.pose.rootY',.35,1.2,.01,'m')}${range('左右位置','model.pose.'+key+'.x',-.9,.9,.01,'m')}${range(key.endsWith('Hand')?'相对骨盆高度':'脚部姿势高度','model.pose.'+key+'.y',-1.2,1.2,.01,'m')}${range('前后位置','model.pose.'+key+'.z',-.9,.9,.01,'m')}${range('肘部弯曲方向','model.pose.armBend',-1,1,.1,'')}${range('膝部弯曲方向','model.pose.kneeBend',-1,1,.1,'')}<p class="control-hint">手部高度相对骨盆；脚部参数以原始站姿为基准。目标超出可达距离时，肢体停在最大伸展位置。</p>`;
   $('pose-limb').onchange=e=>{poseEditor.selected=e.target.value;renderPoseControls();poseEditor.draw();};
 }
-function openPose(){state.model.object='head';if(!state.model.body){state.model.body=true;frameSubject(state,'full');renderCameraControls();renderSceneControls();changed('geometry');}changed('geometry');renderPoseControls();poseEditor.draw();$('pose-dialog').showModal();}
+function openPose(){if(!isMMD(state.model.character)){toast('Lee 只保留扫描头模；请选择 MMD 编辑身体。');return;}state.model.object='head';renderPoseControls();poseEditor.draw();$('pose-dialog').showModal();}
 $('pose-done').onclick=()=>{$('pose-dialog').close();renderSceneControls();};
 $('pose-dialog').addEventListener('close',()=>renderSceneControls());
 $('open-pose-quick').onclick=openPose;
 $('pose-front').onclick=()=>{poseEditor.view='front';$('pose-front').setAttribute('aria-pressed','true');$('pose-side').setAttribute('aria-pressed','false');poseEditor.draw();};
 $('pose-side').onclick=()=>{poseEditor.view='side';$('pose-front').setAttribute('aria-pressed','false');$('pose-side').setAttribute('aria-pressed','true');poseEditor.draw();};
 $('elevation-view').onchange=e=>{elevation.view=e.target.value;elevation.draw();};
-document.querySelectorAll('[data-frame]').forEach(b=>b.onclick=()=>{const reveal=b.dataset.frame!=='head'&&!state.model.body;if(reveal){state.model.body=true;state.model.object='head';renderSceneControls();}frameSubject(state,b.dataset.frame);renderCameraControls();changed(reveal?'geometry':'camera');});
+$('model-quick').innerHTML=CHARACTERS.map(([id,name])=>`<option value="${id}">${name}</option>`).join('');
+$('surface-quick').innerHTML=SURFACES.map(([id,name])=>`<option value="${id}">${name}</option>`).join('');
+function reframe(framing) {
+  if(!isMMD(state.model.character)&&framing!=='head'){toast('男性扫描没有全身；已按头部重新取景。');framing='head';}
+  frameSubject(state,framing);renderCameraControls();changed('camera');
+}
+document.querySelectorAll('[data-frame]').forEach(b=>b.onclick=()=>reframe(b.dataset.frame));
+viewportControls=new ViewportControls($('render-frame'),$('joint-overlay'),()=>state,()=>engine,kind=>{
+  for(const section of ['camera','model'])for(const [key,value] of Object.entries(state[section]))if(typeof value==='number')syncPath(section+'.'+key,value);
+  changed(kind);
+},renderJointControls,()=>reframe(isMMD(state.model.character)?'full':'head'));
+function renderJointControls(id) {
+  $('joint-editor').hidden=!id;
+  if(!id)return;
+  const joint=jointById(id);if(!joint)return;
+  if($('joint-select').querySelector(`option[value="${id}"]`))$('joint-select').value=id;
+  $('joint-title').textContent=joint.label;
+  if(joint.kind==='ik')$('joint-controls').innerHTML='<p class="control-hint">拖动菱形移动手腕 / 脚踝，自动解算肘膝；Alt + 拖动调深度。IK 编辑会清除细调旋转，建议先定四肢位置，再微调手指。</p>';
+  else if(joint.kind==='head')$('joint-controls').innerHTML=range('头部左右','model.yaw',-90,90,1,'°')+range('头部俯仰','model.pitch',-35,35,1,'°');
+  else{
+    state.model.joints[id]??={x:0,y:0,z:0};
+    $('joint-controls').innerHTML=['x','y','z'].map((axis,i)=>range(['弯曲 X','转向 Y','扭转 Z'][i],'model.joints.'+id+'.'+axis,-120,120,1,'°')).join('')+'<p class="control-hint">旋转基于原骨骼局部轴。节点拖动调 X/Y；Alt + 拖动调 Z；Ctrl 精细拖动。关节无碰撞或生理角度约束，请小幅调整。</p>';
+  }
+}
+$('nodes-toggle').onclick=()=>{viewportControls.setNodes(!viewportControls.enabled);$('nodes-toggle').setAttribute('aria-pressed',String(viewportControls.enabled));refreshJointList();};
+function refreshJointList(){
+  const points=engine?.jointPoints(viewportControls.detail)||[];
+  $('joint-select').innerHTML='<option value="">选择关节（也可点画面节点）</option>'+points.map(p=>`<option value="${p.id}" ${viewportControls.selected===p.id?'selected':''}>${esc(p.label)}</option>`).join('');
+}
+$('nodes-detail').onchange=e=>{viewportControls.select(null);viewportControls.setNodes(true,e.target.value);$('nodes-toggle').setAttribute('aria-pressed','true');refreshJointList();};
+$('joint-select').onchange=e=>viewportControls.select(e.target.value||null);
+$('joint-reset').onclick=()=>{
+  const id=viewportControls.selected,joint=jointById(id);if(!joint)return;
+  if(joint.kind==='head'){state.model.yaw=0;state.model.pitch=0;}
+  else if(joint.kind==='ik'){state.model.pose=posePreset('relaxed',state.model.character);state.model.joints={};}
+  else delete state.model.joints[id];
+  renderJointControls(id);changed('geometry');renderSceneControls();
+};
+new ResizeObserver(()=>viewportControls.update()).observe($('render-frame'));
 icons();syncAll();
 const resizeObserver=new ResizeObserver(resizeFrame);resizeObserver.observe($('viewport'));
 document.addEventListener('input',handleControl);document.addEventListener('change',handleControl);
@@ -311,7 +368,7 @@ document.querySelectorAll('[data-close]').forEach(b=>b.onclick=()=>b.closest('di
 document.querySelectorAll('dialog').forEach(d=>d.addEventListener('click',e=>{if(e.target===d){const r=d.getBoundingClientRect();if(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom)d.close();}}));
 $('export-json').onclick=()=>{download(new Blob([JSON.stringify(state,null,2)],{type:'application/json'}),safeFilename(state.name)+'.json');toast('完整方案已导出。');};
 $('export-png').onclick=async()=>{try{if(!engine)throw new Error('渲染器还未就绪');download(await engine.capture(),safeFilename(state.name)+'.png');}catch(e){toast(e.message);}};
-$('export-sheet').onclick=async()=>{try{let image='';if(engine?.ready&&engine.pt.samples>=1)image=await blobDataURL(await engine.capture());const html=makeSheet(state,$('plan-canvas').toDataURL('image/png'),image,$('elevation-canvas').toDataURL('image/png'));download(new Blob([html],{type:'text/html;charset=utf-8'}),safeFilename(state.name)+'-布光参考卡.html');toast('参考卡已导出，可用浏览器打开并打印为 PDF。');}catch(e){toast(e.message);}};
+$('export-sheet').onclick=async()=>{try{let image='';if(engine?.ready&&(engine.state.render.mode==='albedo'||engine.pt.samples>=1))image=await blobDataURL(await engine.capture());const html=makeSheet(state,$('plan-canvas').toDataURL('image/png'),image,$('elevation-canvas').toDataURL('image/png'));download(new Blob([html],{type:'text/html;charset=utf-8'}),safeFilename(state.name)+'-布光参考卡.html');toast('参考卡已导出，可用浏览器打开并打印为 PDF。');}catch(e){toast(e.message);}};
 $('snapshot-button').onclick=setSnapshot;
 $('compare-button').onclick=()=>snapshot?compareVisible?hideCompare():showCompare():setSnapshot();
 $('hide-compare').onclick=hideCompare;
@@ -320,15 +377,24 @@ $('compare-divider').addEventListener('pointerdown',e=>{comparing=true;e.target.
 $('compare-divider').addEventListener('pointermove',e=>{if(!comparing)return;const r=$('render-frame').getBoundingClientRect(),p=clamp((e.clientX-r.left)/r.width*100,2,98);$('compare-layer').style.clipPath=`inset(0 ${100-p}% 0 0)`;$('compare-divider').style.left=p+'%';});
 $('compare-divider').addEventListener('pointerup',()=>comparing=false);$('compare-divider').addEventListener('pointercancel',()=>comparing=false);
 $('saved-list').addEventListener('click',e=>{const load=e.target.closest('[data-load]'),del=e.target.closest('[data-delete]');if(load){const item=saved.find(x=>x.id===load.dataset.load);if(item){state=validateState(item.state);syncAll();changed('scene');toast('已恢复方案。');}}if(del){const removed=saved.find(x=>x.id===del.dataset.delete);saved=saved.filter(x=>x.id!==del.dataset.delete);if(!persistSaved()&&removed)saved.unshift(removed);renderSaved();}});
+$('saved-list').addEventListener('click',e=>{
+  const button=e.target.closest('[data-rename]');if(!button)return;
+  const item=saved.find(x=>x.id===button.dataset.rename);if(!item)return;
+  renameID=item.id;$('rename-input').value=item.state.name;$('rename-dialog').showModal();$('rename-input').select();
+});
+$('rename-form').onsubmit=e=>{
+  e.preventDefault();const before=clone(saved);
+  try{renameStudy(saved,renameID,$('rename-input').value);if(!persistSaved()){saved=before;return;}renderSaved();$('rename-dialog').close();toast('名称已修改，灯光和相机参数未改变。');}catch(error){toast(error.message);}
+};
 $('import-button').onclick=()=>$('import-file').click();
 $('import-file').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{if(file.size>200000)throw new Error('方案文件过大，请选择黑棚导出的 JSON');const next=validateState(JSON.parse(await file.text()));state=next;syncAll();changed('scene');toast('方案已导入。');}catch(error){toast('导入失败：'+error.message);}finally{e.target.value='';}};
 $('retry-button').onclick=()=>{try{localStorage.setItem(STORAGE,JSON.stringify(state));}catch{}location.reload();};
 $('retry-model').onclick=()=>{state.model.object='head';startEngine();};
-$('cdn-button').onclick=async()=>{const details=JSON.stringify({version:'0.3.0-local',error:$('error-detail').textContent,userAgent:navigator.userAgent,webgl2:typeof WebGL2RenderingContext!=='undefined',secureContext:isSecureContext},null,2);try{await navigator.clipboard.writeText(details);toast('诊断信息已复制，可粘贴到问题反馈中。');}catch{download(new Blob([details],{type:'application/json'}),'cos-light-diagnostic.json');}};
+$('cdn-button').onclick=async()=>{const details=JSON.stringify({version:'0.5.0-local',error:$('error-detail').textContent,userAgent:navigator.userAgent,webgl2:typeof WebGL2RenderingContext!=='undefined',secureContext:isSecureContext},null,2);try{await navigator.clipboard.writeText(details);toast('诊断信息已复制，可粘贴到问题反馈中。');}catch{download(new Blob([details],{type:'application/json'}),'cos-light-diagnostic.json');}};
 document.addEventListener('keydown',e=>{
   if(e.target.matches('input,select,textarea')||document.querySelector('dialog[open]')||e.ctrlKey||e.metaKey||e.altKey)return;
   if(['1','2','3'].includes(e.key)){selectLight(state.lights[Number(e.key)-1].id);}
-  if(e.key.toLowerCase()==='s'){$('solo-button').click();}
+  if(e.key.toLowerCase()==='l'){$('solo-button').click();}
   if(e.key===' '){e.preventDefault();$('pause-button').click();}
 });
 window.addEventListener('beforeunload',()=>{try{localStorage.setItem(STORAGE,JSON.stringify(state));}catch{}});

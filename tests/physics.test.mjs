@@ -65,7 +65,7 @@ test('every preset survives export and import with the same values',()=>{
 test('invalid imports cannot inject unsafe values or unbounded work',()=>{
   assert.throws(()=>validateState({}));assert.throws(()=>validateState({...defaults(),version:99}));
   const s=defaults();s.lights[0].width=-10;s.camera.iso=1e99;s.render.maxSamples=Infinity;s.render.bounces=999;s.model.material='arbitrary';s.model.skinTone=8;s.room.boardSide=.3;
-  const v=validateState(s);assert.equal(v.lights[0].width,.05);assert.equal(v.camera.iso,3200);assert.equal(v.render.maxSamples,256);assert.equal(v.render.bounces,12);assert.equal(v.model.material,'clay');assert.equal(v.model.skinTone,1);assert.equal(v.room.boardSide,1);
+  const v=validateState(s);assert.equal(v.lights[0].width,.05);assert.equal(v.camera.iso,3200);assert.equal(v.render.maxSamples,256);assert.equal(v.render.bounces,12);assert.equal(v.model.material,'skin');assert.equal(v.model.skinTone,1);assert.equal(v.room.boardSide,1);
 });
 test('reference card escapes user notes and names',()=>{
   const s=defaults();s.name='<script>alert(1)</script>';s.notes='</p><img src=x onerror=alert(1)>';

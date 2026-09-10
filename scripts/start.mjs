@@ -26,7 +26,12 @@ async function main(){
   const arg=process.argv.find(x=>x.startsWith('--port=')),port=arg?Number(arg.split('=')[1]):5273;
   if(!Number.isInteger(port)||port<1024||port>65535)throw new Error('端口须介于 1024 与 65535。');
   const url=`http://127.0.0.1:${port}/`;
-  try{const r=await fetch(url+'__health',{signal:AbortSignal.timeout(600)});if((await r.json()).application==='cos-light-studio'){console.log(`黑棚已在运行：${url}`);if(!process.argv.includes('--no-open'))openBrowser(url);return;}}catch{}
+  let running=null;try{const r=await fetch(url+'__health',{signal:AbortSignal.timeout(600)});running=await r.json();}catch{}
+  if(running?.application==='cos-light-studio'){
+    const build=JSON.parse(await readFile(resolve(DIST,'build-manifest.json'),'utf8'));
+    if(running.version!=='0.5.0'||running.build!==build.sourceDigest)throw new Error('检测到旧版或另一个素材包的黑棚正在运行。请先关闭旧的启动窗口，再运行本版，避免打开旧模型。');
+    console.log(`黑棚已在运行：${url}`);if(!process.argv.includes('--no-open'))openBrowser(url);return;
+  }
   const server=await createLocalServer();
   server.on('error',e=>{console.error(e.code==='EADDRINUSE'?`端口 ${port} 被其他程序占用。可运行 node scripts/start.mjs --port=5274；不同端口的浏览器存档相互独立。`:e.message);process.exitCode=1;});
   server.listen(port,'127.0.0.1',()=>{console.log(`\n黑棚已启动：${url}\n保留此窗口。按 Ctrl+C 关闭。所有渲染在本机完成。\n`);if(!process.argv.includes('--no-open'))openBrowser(url);});

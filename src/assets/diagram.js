@@ -1,5 +1,6 @@
 import {position,aim,angularSize,DEG,wrapAngle,clamp} from './physics.js';
 import {aimedLights} from './state.js';
+import {cameraPosition} from './viewport-math.js';
 
 export class LightingDiagram {
   constructor(canvas,getState,onSelect,onMove){
@@ -37,8 +38,9 @@ export class LightingDiagram {
     c.font='14px system-ui';c.fillStyle='#596472';c.textAlign='center';c.fillText('后侧',cx,23);c.fillText('相机侧',cx,h-16);
     const frameAspect={portrait:2/3,square:1,landscape:1.5}[s.camera.frame];
     const filmWidth=(s.camera.sensor==='apsc'?22.3:36)*Math.min(frameAspect,1);
-    const camera=this.at(0,s.camera.distance),fov=2*Math.atan(filmWidth/(2*s.camera.focal));
-    c.fillStyle='#8995a50c';c.beginPath();c.moveTo(camera.x,camera.y);c.lineTo(cx-Math.tan(fov/2)*s.camera.distance*scale,cy);c.lineTo(cx+Math.tan(fov/2)*s.camera.distance*scale,cy);c.closePath();c.fill();
+    const cp=cameraPosition(s.camera),camera=this.at(cp.x,cp.z),fov=2*Math.atan(filmWidth/(2*s.camera.focal)),aCam=(s.camera.azimuth||0)*DEG,span=Math.tan(fov/2)*s.camera.distance;
+    const edge1=this.at(s.camera.x-span*Math.cos(aCam),span*Math.sin(aCam)),edge2=this.at(s.camera.x+span*Math.cos(aCam),-span*Math.sin(aCam));
+    c.fillStyle='#8995a50c';c.beginPath();c.moveTo(camera.x,camera.y);c.lineTo(edge1.x,edge1.y);c.lineTo(edge2.x,edge2.y);c.closePath();c.fill();
     c.strokeStyle='#657180';c.fillStyle='#222a34';c.lineWidth=1.5;c.beginPath();c.roundRect(camera.x-15,camera.y-8,30,19,3);c.fill();c.stroke();c.beginPath();c.moveTo(camera.x-7,camera.y-8);c.lineTo(camera.x-10,camera.y-15);c.lineTo(camera.x+10,camera.y-15);c.lineTo(camera.x+7,camera.y-8);c.closePath();c.fill();c.stroke();
     const r=s.room;if(r.board2!=='off'){c.save();const p=this.at(-r.boardSide*r.board2Distance,.1);c.translate(p.x,p.y);c.rotate(r.boardSide*r.board2Angle*DEG);c.fillStyle=r.board2==='black'?'#555a61':r.board2==='silver'?'#bdcbd7':'#d3cfc2';c.fillRect(-3,-r.board2Width/2*scale,6,r.board2Width*scale);c.restore();}
     if(r.board!=='off'){
@@ -54,7 +56,8 @@ export class LightingDiagram {
       c.font='12px system-ui';c.fillText(`${l.azimuth}°`,0,selected?-26:27);c.restore();
     });
     // Head silhouette and a small nose establish face orientation in plan view.
-    c.save();c.translate(cx,cy);c.rotate(-(s.model.yaw+s.model.bodyYaw)*DEG);c.fillStyle='#9ba29f';c.strokeStyle='#c0c5bf';c.lineWidth=1;
+    const subject=this.at(s.model.x||0,s.model.z||0);
+    c.save();c.translate(subject.x,subject.y);c.rotate(-(s.model.yaw+s.model.bodyYaw)*DEG);c.fillStyle='#9ba29f';c.strokeStyle='#c0c5bf';c.lineWidth=1;
     c.beginPath();c.ellipse(0,0,10,12,0,0,Math.PI*2);c.fill();c.beginPath();c.moveTo(-3,11);c.lineTo(0,17);c.lineTo(3,11);c.fill();c.restore();
     c.fillStyle='#a3aaa9';c.textAlign='left';c.font='12px system-ui';c.fillText('人像',cx+18,cy+5);
     const current=aimedLights(s).find(l=>l.id===s.selected),a=angularSize(current);c.fillStyle='#7d8895';c.textAlign='left';c.font='12px system-ui';c.fillText(`灯心高 ${current.heightY.toFixed(2)} m`,18,h-38);c.fillText(`至面心 ${a.distance.toFixed(2)} m`,18,h-20);

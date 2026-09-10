@@ -6,12 +6,13 @@ import {DIST} from './common.mjs';
 const mime={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.glb':'model/gltf-binary','.txt':'text/plain; charset=utf-8','.md':'text/plain; charset=utf-8'};
 export async function createLocalServer(root=DIST){
   const realRoot=await realpath(root);
+  let build={};try{build=JSON.parse(await readFile(resolve(realRoot,'build-manifest.json'),'utf8'));}catch{}
   return http.createServer(async(req,res)=>{
     res.setHeader('X-Content-Type-Options','nosniff');res.setHeader('Cache-Control','no-cache');
     if(!['GET','HEAD'].includes(req.method)){res.writeHead(405,{'Allow':'GET, HEAD'});res.end();return;}
     let path;
     try{path=decodeURIComponent(new URL(req.url,'http://127.0.0.1').pathname);}catch{res.writeHead(400);res.end('Bad request');return;}
-    if(path==='/__health'){res.writeHead(200,{'Content-Type':'application/json'});res.end(req.method==='HEAD'?undefined:JSON.stringify({application:'cos-light-studio',version:'0.2.0'}));return;}
+    if(path==='/__health'){res.writeHead(200,{'Content-Type':'application/json'});res.end(req.method==='HEAD'?undefined:JSON.stringify({application:'cos-light-studio',version:'0.5.0',build:build.sourceDigest||null}));return;}
     if(path==='/'||path.endsWith('/'))path+='index.html';
     let filename=resolve(realRoot,'.'+path);
     try{

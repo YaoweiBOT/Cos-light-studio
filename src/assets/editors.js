@@ -1,6 +1,7 @@
 import {position,aim,DEG,clamp,wrapAngle} from './physics.js';
 import {aimedLights} from './state.js';
-import {rigPose,rotateBody,LIMBS,LABELS} from './posing.js';
+import {rigPose,rotateBody,LIMBS,LABELS,pointToPoseTarget,modelToWorld} from './posing.js';
+import {cameraPosition} from './viewport-math.js';
 
 const point=(canvas,e)=>{const r=canvas.getBoundingClientRect();return {x:(e.clientX-r.left)/r.width*canvas.width,y:(e.clientY-r.top)/r.height*canvas.height};};
 function bindDrag(owner){
@@ -24,10 +25,10 @@ export class ElevationDiagram{
   draw(){
     const c=this.ctx,s=this.getState(),w=this.canvas.width,h=this.canvas.height,{cx,base,scale}=this.transform();c.clearRect(0,0,w,h);c.fillStyle='#15171a';c.fillRect(0,0,w,h);c.font='15px system-ui';
     for(let y=0;y<=4;y++){line(c,{x:28,y:base-y*scale},{x:w-12,y:base-y*scale},y===0?'#65717d':'#2c333b',1);c.fillStyle='#8793a0';c.fillText(`${y}m`,3,base-y*scale+4);}
-    const rig=rigPose(s.model),world=p=>this.at(rotateBody(p,s.model.bodyYaw));
+    const rig=rigPose(s.model),world=p=>this.at(modelToWorld(s.model,p));
     if(s.model.body){for(const chain of Object.values(rig.limbs)){line(c,world(chain.start),world(chain.mid),'#929baf',6);line(c,world(chain.mid),world(chain.end),'#929baf',5);}line(c,world(rig.joints.pelvis),world(rig.joints.neck),'#929baf',13);}
     node(c,world(rig.joints.head),10,'#b4bcb9');
-    const cam=this.at({x:0,y:s.camera.heightY,z:s.camera.distance});c.fillStyle='#7894ae';c.fillRect(cam.x-10,cam.y-6,20,12);line(c,cam,this.at({x:0,y:s.camera.targetY,z:0}),'#455465',1);
+    const cam=this.at(cameraPosition(s.camera));c.fillStyle='#7894ae';c.fillRect(cam.x-10,cam.y-6,20,12);line(c,cam,this.at({x:s.camera.x||0,y:s.camera.targetY,z:0}),'#455465',1);
     for(const l of aimedLights(s)){
       const p=position(l),q=this.at(p),t=this.at(aim(l)),selected=l.id===s.selected;c.globalAlpha=l.enabled?1:.3;
       c.setLineDash([5,5]);line(c,q,t,l.color,1);c.setLineDash([]);node(c,q,selected?18:14,'#252a30');c.strokeStyle=l.color;c.lineWidth=selected?3:1;c.stroke();c.fillStyle=l.color;c.textAlign='center';c.fillText(l.role,q.x,q.y+5);c.fillText(`${p.y.toFixed(2)} m`,q.x,q.y-25);c.globalAlpha=1;
@@ -42,11 +43,12 @@ export class PoseEditor{
   at(p){const {cx,base,scale}=this.transform();return {x:cx+(this.view==='front'?p.x:p.z)*scale,y:base-p.y*scale};}
   down(e){const q=point(this.canvas,e),rig=rigPose(this.getState().model);const hit=LIMBS.map(key=>({key,p:this.at(rig.limbs[key].end)})).sort((a,b)=>Math.hypot(a.p.x-q.x,a.p.y-q.y)-Math.hypot(b.p.x-q.x,b.p.y-q.y))[0];if(hit&&Math.hypot(hit.p.x-q.x,hit.p.y-q.y)<30){this.drag=hit.key;this.selected=hit.key;this.onSelect(this.selected);this.canvas.setPointerCapture(e.pointerId);this.move(e);}}
   move(e){
-    if(!this.drag)return;const q=point(this.canvas,e),{cx,base,scale}=this.transform(),m=this.getState().model,target={...m.pose[this.drag]};
-    target[this.view==='front'?'x':'z']=clamp((q.x-cx)/scale,-.9,.9);target.y=clamp((base-q.y)/scale-m.pose.rootY,-1.2,1.2);
+    if(!this.drag)return;const q=point(this.canvas,e),{cx,base,scale}=this.transform(),m=this.getState().model,world={...rigPose(m).limbs[this.drag].end};
+    world[this.view==='front'?'x':'z']=clamp((q.x-cx)/scale,-.9,.9);world.y=clamp((base-q.y)/scale,.02,2.4);
+    const target=pointToPoseTarget(m,this.drag,world);
     // Commit the reachable solution rather than leaving an unreachable goal stored.
-    const next={...m,pose:{...m.pose,[this.drag]:target}},end=rigPose(next).limbs[this.drag].end;
-    this.onChange(this.drag,{x:end.x,y:end.y-m.pose.rootY,z:end.z});
+    const next={...m,pose:{...m.pose,id:'custom',[this.drag]:target}},end=rigPose(next).limbs[this.drag].end;
+    this.onChange(this.drag,pointToPoseTarget(m,this.drag,end));
   }
   draw(){
     const c=this.ctx,s=this.getState(),rig=rigPose({...s.model,body:true}),w=this.canvas.width,h=this.canvas.height,{base,scale}=this.transform();c.clearRect(0,0,w,h);c.fillStyle='#13181e';c.fillRect(0,0,w,h);c.font='16px system-ui';

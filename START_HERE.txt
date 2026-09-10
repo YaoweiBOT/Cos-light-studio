@@ -1,4 +1,4 @@
-Cos Light Studio - local release 0.3.0
+Cos Light Studio - local release 0.5.0
 
 1. Extract the complete ZIP into a folder.
 2. Install Python 3.8+ OR Node.js 22.12+ if neither is available.
@@ -6,7 +6,9 @@ Cos Light Studio - local release 0.3.0
 4. Keep its window open; use http://127.0.0.1:5273/ in Chrome or Edge.
 
 Do not open index.html directly. Rendering uses your own GPU.
-The prepared release includes all renderer libraries, the head scan and textures.
+The prepared release includes renderer libraries and the licensed Lee head scan.
+The PERSONAL package also includes your three MMD characters.
+Do not redistribute the personal character assets; use the SOURCE package for GitHub.
 No runtime CDN connection or API key is needed.
 
 macOS: sh start-macos.command
