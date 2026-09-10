@@ -304,7 +304,7 @@ async function startEngine(){
       }
     });
     await engine.init(state);
-    window.__engine=engine; // DEBUG
+    
     viewportControls?.update();
     // A preset can be changed while the scan is downloading.
     if(engine.state!==state)await engine.apply(state,'scene');
