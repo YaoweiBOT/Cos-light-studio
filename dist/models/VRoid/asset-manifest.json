@@ -1,0 +1,13 @@
+{
+  "source": "VRoid Studio beta sample models, mirrored from madjin/vrm-samples (vroid/beta)",
+  "creator": "pixiv Inc. (VRoid Studio)",
+  "license": "CC0-1.0",
+  "license_note": "pixiv 官方 FAQ 将 VRoid Studio β 版示例模型列为 CC0（版权放弃，可自由使用、修改与再分发）。见 https://vroid.pixiv.help/hc/en-us/articles/4402614652569",
+  "files": {
+    "Sendagaya_Shino.vrm": {
+      "url": "https://raw.githubusercontent.com/madjin/vrm-samples/master/vroid/beta/Sendagaya_Shino.vrm",
+      "bytes": 15074328,
+      "sha256": "1e177c1a7b14f783a9c48395831db8616260d3bddd4154cb2784b779adca49b5"
+    }
+  }
+}

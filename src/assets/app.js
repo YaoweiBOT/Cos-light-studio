@@ -3,6 +3,8 @@ import {clamp,meter,angularSize,frontalNormal,displayLightColor,beamDiameter,spo
 import {ElevationDiagram,PoseEditor} from './editors.js';
 import {posePreset,CHARACTERS,HAIRSTYLES,HAIR_COLORS,POSES,LIMBS,LABELS,setPose,frameSubject,facePoint,rigPose} from './posing.js';
 import {isMMD} from './character-catalog.js';
+import {EXTERNAL_CHARACTERS,probeCustom,importModelFile} from './external-model.js';
+import {EXTERNAL_IDS} from './posing.js';
 import {LightingDiagram} from './diagram.js';
 import {download,safeFilename,makeSheet,blobDataURL,escapeHTML as esc} from './exports.js';
 import {SURFACES} from './surfaces.js';
@@ -12,7 +14,8 @@ import {jointById} from './joints.js';
 const $=id=>document.getElementById(id);
 const STORAGE='cos-light-studio:v1',SAVED='cos-light-studio:saved:v1';
 let state=defaults(),saved=[],engine=null,engineLoading=false,renderTimer=0,saveTimer=0,toastTimer=0,snapshot=null,compareVisible=false,firstFrame=false,assetReady=false;
-let pendingKind=null,viewportControls=null,renameID=null;
+let pendingKind=null,viewportControls=null,renameID=null,customModelReady=false;
+probeCustom().then(available=>{customModelReady=available;if(available)renderSceneControls();}).catch(()=>{});
 try{const raw=localStorage.getItem(STORAGE);if(raw)state=validateState(JSON.parse(raw));}catch{ /* A damaged autosave does not block opening the studio. */ }
 try{const raw=JSON.parse(localStorage.getItem(SAVED)||'[]');if(Array.isArray(raw))saved=raw.slice(0,30).flatMap(x=>{try{return x&&typeof x.id==='string'?[{...x,state:validateState(x.state)}]:[];}catch{return [];}});}catch{saved=[];}
 
@@ -105,10 +108,13 @@ function renderCameraControls(){
 }
 function renderSceneControls(){
   const mmd=isMMD(state.model.character);
+  const external=EXTERNAL_IDS.includes(state.model.character);
+  const characterOptions=CHARACTERS.concat(EXTERNAL_CHARACTERS.filter(([id])=>id==='vroid'||customModelReady));
   $('scene-controls').innerHTML=`
     ${select('拍摄对象','model.object',[['head','人物模型'],['spheres','灰球 / 白球 / 金属球']])}
-    ${select('人物','model.character',CHARACTERS)}
-    <p class="control-hint">${mmd?'原装脸型、眼睛、头发与服装，使用你提供的 PMX 和贴图。点击画面下方切换头部、半身或全身取景。':'Lee 为男性扫描模型。'}</p>
+    ${select('人物','model.character',characterOptions)}
+    <button id="import-model" class="wide-button">导入模型包 · zip / pmx / vrm / glb</button>
+    <p class="control-hint">${mmd?'原装脸型、眼睛、头发与服装，使用你提供的 PMX 和贴图。点击画面下方切换头部、半身或全身取景。':external?'外部人物为静态站立模型：姿势节点编辑不生效；朝向、灯位、取景与测光正常。导入的模型只保存在此浏览器里，不会上传或提交。':'Lee 为男性扫描模型。'}</p>
     ${mmd?'':'<p class="control-hint">只保留原始男性头部扫描，不再拼接自制身体、假发或衣服。需要全身请选已导入的 MMD。</p>'}
     ${mmd?'':'<div hidden>'}
     <div class="select-row"><label for="pose-preset">拍照姿势</label><select id="pose-preset"><option value="custom">自定义 / 当前</option>${POSES.map(([v,l])=>`<option value="${v}" ${state.model.pose.id===v?'selected':''}>${l}</option>`).join('')}</select></div>
@@ -144,7 +150,8 @@ function renderSceneControls(){
     ${range('反弹次数上限','render.bounces',2,12,1,'')}
     <div class="select-row"><label for="samples-select">停止采样阈值</label><select id="samples-select">${[64,128,256,512,1024,2048,4096].map(v=>`<option value="${v}" ${state.render.maxSamples===v?'selected':''}>${v} samples</option>`).join('')}</select></div>
     <p class="control-hint">更多采样减少噪点，不会增加皮肤模型本身的真实度。银板等间接反射需要更多采样。</p>`;
-  $('open-pose').onclick=openPose;
+  if($('import-model'))$('import-model').onclick=()=>$('model-file').click();
+  if($('open-pose').onclick===undefined)$('open-pose').onclick=openPose;
   $('pose-preset').onchange=e=>{if(e.target.value==='custom')return;setPose(state,e.target.value);frameSubject(state,'full');syncAll();changed('scene');};
   $('white-studio').onclick=()=>{Object.assign(state.room,{reflectance:.65,floor:.6,background:0,board:'white',boardSide:-1,boardDistance:.9,boardWidth:1.2,boardSize:2.2,boardHeight:1.1,board2:'white',board2Distance:.9,board2Height:1.1,board2Width:1.2,board2Size:2.2});renderSceneControls();changed('scene');};
   $('board-side').addEventListener('change',e=>{state.room.boardSide=Number(e.target.value);changed('geometry');});
@@ -175,7 +182,7 @@ function updateReadouts(){
   $('quality-select').value=state.render.quality;
   $('thirds-grid').hidden=!state.render.grid;$('grid-button').setAttribute('aria-pressed',String(state.render.grid));
   $('falsecolor-legend').hidden=state.render.diagnostic!=='falsecolor';
-  $('subject-label').textContent=state.model.object==='spheres'?'GRAY / WHITE / METAL · 物理参考':`${CHARACTERS.find(x=>x[0]===state.model.character)?.[1]||'人物'} · ${state.model.body?'全身':'头部'}`;
+  $('subject-label').textContent=state.model.object==='spheres'?'GRAY / WHITE / METAL · 物理参考':`${CHARACTERS.concat(EXTERNAL_CHARACTERS).find(x=>x[0]===state.model.character)?.[1]||'人物'} · ${state.model.body?'全身':'头部'}`;
   if(snapshot){const same=['aperture','shutter','iso','ev','wb','tint'].every(k=>snapshot.state.camera[k]===c[k]);$('compare-summary').textContent=same?'A / B 曝光与白平衡相同。':'注意：A / B 的曝光或白平衡不同。';}
   diagram.draw();elevation.draw();if(poseEditor)poseEditor.draw();
   viewportControls?.update();
@@ -249,6 +256,7 @@ function handleControl(e){
     if(key==='character'){
       switchCharacter(state,val);
       viewportControls?.select(null);renderSceneControls();
+      if(EXTERNAL_IDS.includes(val)){frameSubject(state,'full');renderCameraControls();}
       toast('已切换模型；灯光、相机、曝光和看光方式保持不变。需要重新取景请按 F。');
     }
     if(key==='material'&&val==='skin'&&state.model.character==='scan'&&!engine?.skinMap)toast('扫描肤色纹理还未就绪，暂用中性表面。');
@@ -407,6 +415,19 @@ $('rename-form').onsubmit=e=>{
   try{renameStudy(saved,renameID,$('rename-input').value);if(!persistSaved()){saved=before;return;}renderSaved();$('rename-dialog').close();toast('名称已修改，灯光和相机参数未改变。');}catch(error){toast(error.message);}
 };
 $('import-button').onclick=()=>$('import-file').click();
+$('model-file').onchange=async e=>{
+  const file=e.target.files?.[0];if(!file)return;
+  try{
+    toast('正在导入 '+file.name+'，稍等片刻…');
+    const name=await importModelFile(file);
+    customModelReady=true;
+    switchCharacter(state,'custom');
+    state.model.object='head';
+    frameSubject(state,'full');
+    renderSceneControls();renderCameraControls();changed('scene');
+    toast('已导入 '+name+'，人物已切换为自定义模型。');
+  }catch(error){toast('导入失败：'+error.message);}finally{e.target.value='';}
+};
 $('import-file').onchange=async e=>{const file=e.target.files?.[0];if(!file)return;try{if(file.size>200000)throw new Error('方案文件过大，请选择黑棚导出的 JSON');const next=validateState(JSON.parse(await file.text()));state=next;syncAll();changed('scene');toast('方案已导入。');}catch(error){toast('导入失败：'+error.message);}finally{e.target.value='';}};
 $('retry-button').onclick=()=>{try{localStorage.setItem(STORAGE,JSON.stringify(state));}catch{}location.reload();};
 $('retry-model').onclick=()=>{state.model.object='head';startEngine();};

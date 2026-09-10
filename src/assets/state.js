@@ -1,4 +1,4 @@
-import {posePreset,CHARACTERS,HAIRSTYLES,HAIR_COLORS,LIMBS,facePoint} from './posing.js';
+import {posePreset,CHARACTERS,HAIRSTYLES,HAIR_COLORS,LIMBS,facePoint,EXTERNAL_IDS} from './posing.js';
 import {clamp} from './physics.js';
 import {isMMD} from './character-catalog.js';
 import {SURFACES} from './surfaces.js';
@@ -105,7 +105,7 @@ export function validateState(input){
   for(const [section,key,options] of [
     ['camera','frame',['portrait','square','landscape']],
     ['model','material',SURFACES.map(x=>x[0])],['model','object',['head','spheres']],
-    ['model','character',CHARACTERS.map(x=>x[0])],['model','hair',HAIRSTYLES.map(x=>x[0])],['model','hairColor',HAIR_COLORS.map(x=>x[0])],['model','clothing',['uniform','dress','suit']],
+    ['model','character',CHARACTERS.map(x=>x[0]).concat(EXTERNAL_IDS)],['model','hair',HAIRSTYLES.map(x=>x[0])],['model','hairColor',HAIR_COLORS.map(x=>x[0])],['model','clothing',['uniform','dress','suit']],
     ['prop','type',['off','ladder','stool','cube']],['room','board2',['off','white','black','silver']],
     ['room','board',['off','white','black','silver','below']],
     ['render','quality',['draft','balanced','fine']],['render','diagnostic',['beauty','clip','falsecolor','mono']],['render','mode',['physical','albedo']]
@@ -133,7 +133,7 @@ export function validateState(input){
   return d;
 }
 export function switchCharacter(state,id) {
-  if(!CHARACTERS.some(c=>c[0]===id))throw new Error('未知人物');
+  if(!CHARACTERS.some(c=>c[0]===id)&&!EXTERNAL_IDS.includes(id))throw new Error('未知人物');
   const poseID=state.model.pose.id;
   Object.assign(state.model,{character:id,object:'head',body:isMMD(id),hair:'none',joints:{},
     pose:posePreset(poseID==='custom'?'relaxed':poseID,id)});

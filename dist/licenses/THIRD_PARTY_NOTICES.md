@@ -1,4 +1,4 @@
-# Third-party notices
+﻿# Third-party notices
 
 The original Cos Light Studio application code is provided under the MIT
 license in `LICENSE`. Third-party software and assets retain their own
@@ -70,3 +70,9 @@ These files were supplied by the user for private local integration. They are NO
 The personal package retains the original files. Runtime adaptations normalize scale, map original textures to physical surface materials, omit duplicate sphere-map highlight shells and initially invisible glasses, apply skeletal posing, and keep Yixuan's open sleeves hanging in a static approximation. Original material colors and source topology are preserved; shared material-boundary vertices may be duplicated for the path tracer. No Toon/SPA shader, complete SDEF, facial animation, Bullet physics or cloth collision is included.
 
 The public source package excludes `assets/MMD/` and `dist/models/MMD/` entirely. The loader, compatibility metadata, pose controls, and original application code may be shared under MIT.
+
+## VRoid Studio beta sample model
+
+The optional character 'Sendagaya_Shino.vrm' in 'assets/VRoid/' is a VRoid Studio beta sample model released by pixiv Inc. under CC0 1.0 Universal (copyright waived). Official statement: https://vroid.pixiv.help/hc/en-us/articles/4402614652569 - License text: https://creativecommons.org/publicdomain/zero/1.0/ - Fetch source: https://github.com/madjin/vrm-samples (vroid/beta). A manifest records the source URL, byte count and SHA-256. At load time toon materials are replaced with neutral PBR materials; the bundled file is unchanged.
+
+Note: VRoid Studio's AvatarSample_A/B/C models are NOT CC0 and are not bundled. Users may import their own licensed model files via the in-app import button or 'dist/models/custom/'; such files stay on the user's machine, are git-ignored, and are never covered by this project's licenses.
