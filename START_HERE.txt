@@ -7,8 +7,8 @@ Cos Light Studio - local release 0.5.0
 
 Do not open index.html directly. Rendering uses your own GPU.
 The prepared release includes renderer libraries and the licensed Lee head scan.
-The PERSONAL package also includes your three MMD characters.
-Do not redistribute the personal character assets; use the SOURCE package for GitHub.
+The public package does not include the three restricted MMD characters.
+Import your legally obtained model ZIPs locally and do not redistribute their assets.
 No runtime CDN connection or API key is needed.
 
 macOS: sh start-macos.command
